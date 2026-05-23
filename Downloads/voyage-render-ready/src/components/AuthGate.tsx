@@ -112,6 +112,7 @@ export function AuthGate() {
             exit={{ opacity: 0, x: tab === 'login' ? 20 : -20 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
             onSubmit={handleSubmit}
+            noValidate
             className="space-y-4"
           >
             <div className="space-y-1.5">

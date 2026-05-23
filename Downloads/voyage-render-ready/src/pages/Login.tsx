@@ -55,7 +55,7 @@ export default function Login() {
             <p className="text-sm text-muted-foreground/50">Рады видеть вас снова</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground/60 uppercase tracking-widest">Email</label>
               <input

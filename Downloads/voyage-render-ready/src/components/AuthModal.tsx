@@ -123,7 +123,7 @@ export function AuthModal() {
               ))}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} noValidate className="space-y-4">
               {/* Email */}
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
@@ -147,7 +147,6 @@ export function AuthModal() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={t('auth.password')}
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  required
                   className="w-full bg-neutral-900 border border-border/60 rounded-xl pl-10 pr-11 py-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
                 />
                 <button
