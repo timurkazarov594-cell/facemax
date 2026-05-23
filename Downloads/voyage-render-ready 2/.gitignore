@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/users.json
+data/route-cache.json
+.env
+.env.local
+*.log
