@@ -544,12 +544,35 @@ export default function Results() {
                   {/* Header */}
                   <div className="flex items-start gap-3 mb-4">
                     <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-xs uppercase tracking-widest text-amber-400 font-semibold mb-1">
                         {t('results.hotel.closest_match_banner')}
                       </p>
                       <p className="text-sm text-amber-200/80 leading-relaxed">
                         {(hotelData.closestMatchNote as string) || t('results.hotel.closest_match_note')}
+                      </p>
+                      {/* Original selection pill */}
+                      {hotelData.originalAccommodation && (
+                        <div className="flex items-center gap-2 mt-3">
+                          <span className="text-xs text-amber-400/60 uppercase tracking-widest shrink-0">
+                            {lang === 'ru' ? 'Ваш выбор:' : 'Your selection:'}
+                          </span>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-900/40 border border-amber-700/40 text-amber-300/90 text-xs font-medium">
+                            {hotelData.originalAccommodation as string}
+                          </span>
+                          <span className="text-amber-600/50 text-xs">→</span>
+                          {(hotelData.suggestedAlternatives as string[] | undefined ?? []).slice(0, 2).map((alt) => (
+                            <span key={alt} className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-800/40 text-emerald-300/80 text-xs font-medium">
+                              {alt}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Booking availability notice */}
+                      <p className="text-xs text-amber-400/50 mt-2 italic">
+                        {lang === 'ru'
+                          ? 'Рекомендуемый тип размещения — проверьте наличие перед бронированием.'
+                          : 'Recommended accommodation type — verify availability before booking.'}
                       </p>
                     </div>
                   </div>

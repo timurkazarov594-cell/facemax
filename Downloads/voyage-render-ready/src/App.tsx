@@ -16,6 +16,8 @@ import Disclaimer from "@/pages/Disclaimer";
 import Account from "@/pages/Account";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import PaymentSuccess from "@/pages/PaymentSuccess";
+import PaymentFailed from "@/pages/PaymentFailed";
 import { PlanProvider, usePlanContext } from "@/lib/plan-context";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { AuthModal } from "@/components/AuthModal";
@@ -73,6 +75,8 @@ function Router() {
         <Route path="/account" component={Account} />
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
+        <Route path="/payment-success" component={PaymentSuccess} />
+        <Route path="/payment-failed" component={PaymentFailed} />
         {/* Everything else goes through the language selection gate */}
         <Route>
           <AppRoutes />

@@ -28,6 +28,7 @@ interface AuthContextType {
   login: (name: string, password: string) => Promise<{ error?: string }>;
   register: (name: string, password: string, termsAccepted?: boolean) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
+  refreshPremiumStatus: () => Promise<void>;
   saveTrip: (
     data: Record<string, unknown>,
     meta: { destination: string; city?: string; duration: string; hotelName?: string }
@@ -320,6 +321,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return {};
   };
 
+  // ── Refresh premium status ───────────────────────────────────────────────────
+  const refreshPremiumStatus = async () => {
+    const stored = readLS();
+    if (!stored) return;
+
+    // Local users: check /api/payment/status and update localStorage + state
+    if (isLocalToken(stored.token)) {
+      try {
+        const res = await fetch(`${API}/payment/status`, { credentials: 'include' });
+        if (res.ok) {
+          const { isPremium } = await res.json() as { isPremium: boolean };
+          if (isPremium) {
+            const updatedUser = { ...stored.user, isPremium: true };
+            writeLS({ user: updatedUser, token: stored.token });
+            setUser(updatedUser);
+          }
+        }
+      } catch { /* ignore */ }
+      return;
+    }
+
+    // Backend users: re-fetch /auth/me which returns the latest isPremium
+    try {
+      const { user: u } = await apiFetch<{ user: AuthUser | null }>('/auth/me', undefined, stored.token);
+      if (u) {
+        writeLS({ user: u, token: stored.token });
+        setUser(u);
+      }
+    } catch { /* ignore */ }
+  };
+
   // ── Logout ──────────────────────────────────────────────────────────────────
   const logout = async () => {
     if (!isLocalToken(token)) {
@@ -423,7 +455,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tripsModalOpen,
       openTripsModal: () => { setTripsModalOpen(true); loadTripsForUser(); },
       closeTripsModal: () => setTripsModalOpen(false),
-      login, register, logout,
+      login, register, logout, refreshPremiumStatus,
       saveTrip, deleteTrip, savedTrips,
       refreshTrips: () => loadTripsForUser(),
     }}>

@@ -97,6 +97,26 @@ function getUserTrips(userId) {
   return (u && u.trips) ? [...u.trips].reverse() : [];
 }
 
+function setPremium(userId, paymentId) {
+  const users = loadUsers();
+  const u = users.find(u => u.id === userId);
+  if (!u) return false;
+  u.isPremium = true;
+  u.premiumSince = new Date().toISOString();
+  if (paymentId) u.premiumPaymentId = paymentId;
+  saveUsers(users);
+  return true;
+}
+
+// Find user by email (users store email in the `name` field since auth-context sends name=email)
+function findByEmail(email) {
+  const lower = (email || "").toLowerCase().trim();
+  return loadUsers().find(u =>
+    (u.email || "").toLowerCase() === lower ||
+    (u.name || "").toLowerCase() === lower
+  ) || null;
+}
+
 // ── Auth helper ─────────────────────────────────────────────────────────────
 function getAuthUser(req) {
   if (req.session && req.session.userId) {
@@ -293,8 +313,138 @@ app.delete("/api/voyage/trips/:tripId", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Accommodation compatibility rules ────────────────────────────────────────
+// Each rule fires when: tripMatch (any) AND (roomMatch OR prefMatch) AND budgetMatch
+const COMPAT_RULES = [
+  {
+    // ski + villa or presidential suite
+    tripMatch: ["ski"],
+    roomMatch: ["villa", "presidential"],
+    prefMatch: [],
+    budgetMatch: [],
+    suggestedEn: ["chalet", "ski lodge", "mountain cabin", "serviced apartment", "resort hotel near ski lifts"],
+    suggestedRu: ["шале", "лыжный лодж", "горная кабина", "апартаменты", "отель у подъёмников"],
+    noteEn: "Classic villas are typically unavailable at ski resorts. We've selected the closest alternatives: chalet, ski lodge, or mountain cabin.",
+    noteRu: "Классические виллы могут быть недоступны для этого направления, поэтому мы подобрали ближайшие варианты: шале, апартаменты или отели рядом с подъёмниками.",
+    missingEn: ["villa (unavailable at ski resort)"],
+    missingRu: ["вилла (недоступно на горнолыжном курорте)"],
+    matchedEn: ["chalet", "ski lodge", "mountain cabin"],
+    matchedRu: ["шале", "лыжный лодж", "горная кабина"],
+    promptHint: "Use a chalet, ski lodge, or mountain cabin — NOT a villa. Villas are unavailable at ski resorts.",
+  },
+  {
+    // ski + beach preferences (private_beach, near_beach, water_sports)
+    tripMatch: ["ski"],
+    roomMatch: [],
+    prefMatch: ["private_beach", "near_beach", "water_sports"],
+    budgetMatch: [],
+    suggestedEn: ["alpine spa resort", "chalet with hot tub", "mountain wellness hotel"],
+    suggestedRu: ["горный спа-курорт", "шале с джакузи", "горный велнес-отель"],
+    noteEn: "Beach-specific amenities are not available at ski resorts. We've replaced them with alpine spa and wellness alternatives.",
+    noteRu: "Пляжная инфраструктура недоступна на горнолыжном курорте. Мы заменили её альпийским спа и велнес-услугами.",
+    missingEn: ["private beach", "beach proximity"],
+    missingRu: ["частный пляж", "близость к пляжу"],
+    matchedEn: ["alpine spa", "hot tub", "mountain wellness"],
+    matchedRu: ["альпийский спа", "джакузи", "горный велнес"],
+    promptHint: "Focus on alpine spa, hot tubs, and mountain wellness instead of beach facilities.",
+  },
+  {
+    // beach + chalet
+    tripMatch: ["beach"],
+    roomMatch: ["chalet"],
+    prefMatch: [],
+    budgetMatch: [],
+    suggestedEn: ["beachfront villa", "beach bungalow", "beachfront hotel", "beach resort"],
+    suggestedRu: ["вилла у пляжа", "бунгало", "отель у пляжа", "пляжный курорт"],
+    noteEn: "Chalets are mountain accommodation and are not available at beach destinations. We suggest beachfront alternatives.",
+    noteRu: "Шале — горное размещение, недоступное на пляжных курортах. Мы подобрали альтернативы у моря.",
+    missingEn: ["chalet (mountain only)"],
+    missingRu: ["шале (только для гор)"],
+    matchedEn: ["beachfront villa", "beach bungalow", "beachfront hotel"],
+    matchedRu: ["вилла у пляжа", "бунгало", "отель у пляжа"],
+    promptHint: "Use a beachfront villa, beach bungalow, or beachfront hotel — NOT a chalet.",
+  },
+  {
+    // city / culture / nightlife / business + villa
+    tripMatch: ["culture", "nightlife", "business", "shopping"],
+    roomMatch: ["villa"],
+    prefMatch: [],
+    budgetMatch: [],
+    suggestedEn: ["serviced apartment", "boutique hotel", "premium hotel", "penthouse suite"],
+    suggestedRu: ["апартаменты с сервисом", "бутик-отель", "премиум-отель", "пентхаус"],
+    noteEn: "Standalone villas are rarely available in city centres. We suggest urban alternatives that match your style.",
+    noteRu: "Отдельные виллы редко доступны в центре города. Мы подобрали городские альтернативы, соответствующие вашим предпочтениям.",
+    missingEn: ["villa (unavailable in city centre)"],
+    missingRu: ["вилла (недоступно в центре города)"],
+    matchedEn: ["serviced apartment", "boutique hotel", "penthouse suite"],
+    matchedRu: ["апартаменты с сервисом", "бутик-отель", "пентхаус"],
+    promptHint: "Use a serviced apartment, boutique hotel, or penthouse suite — villas are not standard in city centres.",
+  },
+  {
+    // desert + chalet / ski-related
+    tripMatch: ["desert", "safari"],
+    roomMatch: ["chalet"],
+    prefMatch: [],
+    budgetMatch: [],
+    suggestedEn: ["desert resort", "luxury camp", "desert glamping", "oasis villa"],
+    suggestedRu: ["пустынный курорт", "роскошный лагерь", "глэмпинг в пустыне", "вилла у оазиса"],
+    noteEn: "Chalets are mountain-specific and unavailable in desert settings. We suggest desert resort and glamping alternatives.",
+    noteRu: "Шале — горный тип размещения, недоступный в пустыне. Мы предлагаем пустынные курорты и глэмпинг.",
+    missingEn: ["chalet (mountain only)"],
+    missingRu: ["шале (только горы)"],
+    matchedEn: ["desert resort", "luxury camp", "glamping"],
+    matchedRu: ["пустынный курорт", "роскошный лагерь", "глэмпинг"],
+    promptHint: "Use a desert resort, luxury tented camp, or glamping — NOT a chalet.",
+  },
+  {
+    // budget/cheapest + villa or presidential
+    tripMatch: [],
+    roomMatch: ["villa", "presidential"],
+    prefMatch: [],
+    budgetMatch: ["budget", "cheapest", "cheap", "economy"],
+    suggestedEn: ["3-star hotel", "comfortable guesthouse", "affordable apartment", "hostel with private room"],
+    suggestedRu: ["3-звёздочный отель", "уютный гостевой дом", "доступные апартаменты", "хостел с отдельным номером"],
+    noteEn: "Villas and presidential suites are typically outside a budget travel range. We've selected comfortable alternatives that fit your budget.",
+    noteRu: "Виллы и президентские апартаменты выходят за рамки бюджетного путешествия. Мы подобрали комфортные варианты, соответствующие вашему бюджету.",
+    missingEn: ["villa / presidential suite (over budget)"],
+    missingRu: ["вилла / президентский люкс (выше бюджета)"],
+    matchedEn: ["3-star hotel", "guesthouse", "affordable apartment"],
+    matchedRu: ["3-звёздочный отель", "гостевой дом", "доступные апартаменты"],
+    promptHint: "The traveler has a budget constraint — use a 3-star hotel or guesthouse, not a luxury villa.",
+  },
+];
+
+// Resolve accommodation conflicts and return adjustment info (or null if no conflict)
+function resolveAccommodation(tripTypes, roomType, hotelPrefs, budget, language) {
+  const ru = language === "ru";
+  const tripSet = new Set((tripTypes || []).map(t => String(t).toLowerCase()));
+  const prefSet = new Set((hotelPrefs || []).map(p => String(p).toLowerCase()));
+  const room = String(roomType || "standard").toLowerCase();
+  const budgetLower = String(budget || "").toLowerCase();
+
+  for (const rule of COMPAT_RULES) {
+    const tripOk = rule.tripMatch.length === 0 || rule.tripMatch.some(t => tripSet.has(t));
+    const roomOk = rule.roomMatch.length > 0 && rule.roomMatch.some(r => room === r || room.includes(r));
+    const prefOk = rule.prefMatch.length > 0 && rule.prefMatch.some(p => prefSet.has(p));
+    const budgetOk = rule.budgetMatch.length === 0 || rule.budgetMatch.some(b => budgetLower.includes(b) || room === b);
+
+    if (tripOk && (roomOk || prefOk) && budgetOk) {
+      return {
+        needed: true,
+        originalRoomType: roomType,
+        suggestedAlternatives: ru ? rule.suggestedRu : rule.suggestedEn,
+        note: ru ? rule.noteRu : rule.noteEn,
+        missingFeatures: ru ? rule.missingRu : rule.missingEn,
+        matchedFeatures: ru ? rule.matchedRu : rule.matchedEn,
+        promptHint: rule.promptHint,
+      };
+    }
+  }
+  return null;
+}
+
 // ── Normalize AI response into the exact schema the frontend expects ─────────
-function normalizeResult(raw, params) {
+function normalizeResult(raw, params, accommodationAdjustment) {
   if (!raw || typeof raw !== "object") raw = {};
   const { destination, city, duration, customDuration, guests = "2", language = "en" } = params;
   const effectiveDuration = customDuration || duration || "7 nights";
@@ -361,6 +511,16 @@ function normalizeResult(raw, params) {
     imageUrl: rh.imageUrl || "",
     photosUrl: rh.photosUrl || `https://www.booking.com/search.html?ss=${enc(hotelName)}`,
     hotelUrl: rh.hotelUrl || `https://www.booking.com/searchresults.html?aid=529629&ss=${enc(hotelName)}+${enc(dest)}`,
+    // ── Accommodation adjustment fields (populated when a conflict was detected) ──
+    ...(accommodationAdjustment ? {
+      isClosestMatch: true,
+      originalAccommodation: accommodationAdjustment.originalRoomType,
+      closestMatchNote: accommodationAdjustment.note,
+      missingFeatures: accommodationAdjustment.missingFeatures,
+      matchedFeatures: accommodationAdjustment.matchedFeatures,
+      suggestedAlternatives: accommodationAdjustment.suggestedAlternatives,
+      hotellookSearchUrl: `https://search.hotellook.com/?query=${enc(dest)}&lang=${language === "ru" ? "ru" : "en"}&marker=529629`,
+    } : {}),
   };
 
   // ── restaurants ──
@@ -416,6 +576,7 @@ function normalizeResult(raw, params) {
     dayPlan,
     budgetBreakdown,
     ...(raw.fromMock || raw.isFallback ? { fromMock: true } : {}),
+    ...(accommodationAdjustment ? { accommodationAdjustment } : {}),
   };
 }
 
@@ -537,6 +698,31 @@ function generateFallbackPlan(params) {
   };
 }
 
+// ── Fallback plan with accommodation adjustment ──────────────────────────────
+// Wraps generateFallbackPlan to add isClosestMatch fields when a conflict exists
+function generateFallbackPlanWithAdjustment(params) {
+  const adj = resolveAccommodation(
+    params.tripTypes, params.roomType, params.hotelPrefs, params.budget, params.language
+  );
+  const plan = generateFallbackPlan(params);
+  if (adj) {
+    const enc = encodeURIComponent;
+    const dest = plan.destination || params.destination || "";
+    plan.hotel = {
+      ...plan.hotel,
+      isClosestMatch: true,
+      originalAccommodation: adj.originalRoomType,
+      closestMatchNote: adj.note,
+      missingFeatures: adj.missingFeatures,
+      matchedFeatures: adj.matchedFeatures,
+      suggestedAlternatives: adj.suggestedAlternatives,
+      hotellookSearchUrl: `https://search.hotellook.com/?query=${enc(dest)}&lang=${params.language === "ru" ? "ru" : "en"}&marker=529629`,
+    };
+    plan.accommodationAdjustment = adj;
+  }
+  return plan;
+}
+
 // ── Voyage plan (async job) ──────────────────────────────────────────────────
 app.post("/api/voyage/plan-async", async (req, res) => {
   // Auth is optional — backend users get their trip saved; local/anonymous users
@@ -592,13 +778,13 @@ app.post("/api/voyage/plan-async", async (req, res) => {
       let result;
       if (!openai) {
         console.log("[voyage] No OPENAI_API_KEY — using fallback itinerary for:", destination);
-        result = generateFallbackPlan(body);
+        result = generateFallbackPlanWithAdjustment(body);
       } else {
         try {
           result = await generateTripPlan(openai, body);
         } catch (aiErr) {
           console.error("[voyage] OpenAI call failed, using fallback:", aiErr.message);
-          result = generateFallbackPlan(body);
+          result = generateFallbackPlanWithAdjustment(body);
           result.aiError = aiErr.message;
         }
       }
@@ -622,7 +808,7 @@ app.post("/api/voyage/plan-async", async (req, res) => {
         const job2 = jobs.get(jobId);
         if (job2) {
           job2.status = "done";
-          job2.result = generateFallbackPlan(body);
+          job2.result = generateFallbackPlanWithAdjustment(body);
         }
       } catch (_) {
         const job2 = jobs.get(jobId);
@@ -663,6 +849,12 @@ async function generateTripPlan(openai, params) {
   const lang = language === "ru" ? "Russian" : "English";
   const destFull = city ? `${city}, ${destination}` : destination;
 
+  // Resolve accommodation conflicts before building the prompt
+  const accommodationAdjustment = resolveAccommodation(tripTypes, roomType, hotelPrefs, effectiveBudget, language);
+  const effectiveAccomm = accommodationAdjustment
+    ? `${accommodationAdjustment.suggestedAlternatives[0]} (adjusted — see note)`
+    : roomType;
+
   const systemPrompt = `You are an elite luxury travel concierge. Generate comprehensive, realistic travel itineraries. Always respond in ${lang}. Respond ONLY with valid JSON — no markdown, no code blocks, no text before or after the JSON.`;
 
   const buildPrompt = (attempt) => `Create a detailed travel plan for:
@@ -674,7 +866,8 @@ async function generateTripPlan(openai, params) {
 - Duration: ${effectiveDuration} (${nights} nights)
 - Budget level: ${effectiveBudget}
 - Guests: ${guests}
-- Room type: ${roomType}
+- Room type: ${effectiveAccomm}
+${accommodationAdjustment ? `\nACCOMMODATION NOTE: ${accommodationAdjustment.promptHint}\nThe hotel you suggest MUST be realistic and available for this destination and trip type. Use wording "рекомендуемый тип размещения" / "recommended accommodation" and mention "проверьте наличие перед бронированием" / "verify availability before booking".` : ""}
 ${attempt > 1 ? "\nCRITICAL: Return ONLY valid JSON. No markdown. No code blocks. Exactly the schema below." : ""}
 
 Return ONLY this JSON structure (no other text):
@@ -743,7 +936,7 @@ dayPlan MUST have exactly ${nights} entries. morning/afternoon/evening MUST be p
 
       const parsed = JSON.parse(raw);
       console.log(`[voyage] OpenAI success on attempt ${attempt} for: ${destination}`);
-      return normalizeResult(parsed, params);
+      return normalizeResult(parsed, params, accommodationAdjustment);
     } catch (err) {
       console.error(`[voyage] Attempt ${attempt}/3 failed for ${destination}:`, err.message);
       lastError = err;
@@ -752,6 +945,112 @@ dayPlan MUST have exactly ${nights} entries. morning/afternoon/evening MUST be p
   }
   throw lastError;
 }
+
+// ── YooKassa payment integration ─────────────────────────────────────────────
+function getYooKassaCreds() {
+  const shopId = process.env.YOOKASSA_SHOP_ID;
+  const secretKey = process.env.YOOKASSA_SECRET_KEY;
+  return { shopId, secretKey, ready: !!(shopId && secretKey) };
+}
+
+// POST /api/yookassa/create-payment
+app.post("/api/yookassa/create-payment", async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) return res.status(401).json({ error: "Необходимо войти в аккаунт" });
+
+  const { ready, shopId, secretKey } = getYooKassaCreds();
+  if (!ready) {
+    return res.status(503).json({
+      error: "ЮKassa ещё не подключена. Добавьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в Environment Variables.",
+      missingKeys: true,
+    });
+  }
+
+  const userEmail = user.name || user.email || req.body?.userEmail || "";
+  // Frontend sends the return URL so it works with any deployment domain
+  const successUrl = req.body?.successUrl || `${req.protocol}://${req.get("host")}/payment-success`;
+
+  try {
+    const idempotenceKey = crypto.randomUUID();
+    const basicAuth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
+
+    const ykRes = await fetch("https://api.yookassa.ru/v3/payments", {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${basicAuth}`,
+        "Content-Type": "application/json",
+        "Idempotence-Key": idempotenceKey,
+      },
+      body: JSON.stringify({
+        amount: { value: "799.00", currency: "RUB" },
+        confirmation: { type: "redirect", return_url: successUrl },
+        capture: true,
+        description: "Voyage AI Premium",
+        metadata: {
+          userId: user.id,
+          userEmail,
+          product: "voyage_premium",
+          price: "799",
+        },
+      }),
+    });
+
+    if (!ykRes.ok) {
+      const errBody = await ykRes.json().catch(() => ({}));
+      console.error("[yookassa] Payment creation failed:", ykRes.status, JSON.stringify(errBody));
+      return res.status(502).json({ error: "Ошибка создания платежа. Попробуйте позже." });
+    }
+
+    const payment = await ykRes.json();
+    const confirmationUrl = payment.confirmation?.confirmation_url;
+    if (!confirmationUrl) {
+      return res.status(502).json({ error: "Не получен URL для оплаты. Попробуйте позже." });
+    }
+
+    console.log(`[yookassa] Payment created for user ${user.id} (${userEmail}), id=${payment.id}`);
+    res.json({ confirmationUrl, paymentId: payment.id });
+  } catch (err) {
+    console.error("[yookassa] Error:", err.message);
+    res.status(500).json({ error: "Ошибка соединения с ЮKassa. Попробуйте позже." });
+  }
+});
+
+// POST /api/yookassa/webhook  — called by YooKassa when payment status changes
+app.post("/api/yookassa/webhook", (req, res) => {
+  try {
+    const event = req.body || {};
+    console.log("[yookassa] Webhook event:", event.event, "object id:", event.object?.id);
+
+    if (event.event === "payment.succeeded") {
+      const metadata = event.object?.metadata || {};
+      const userId = metadata.userId;
+      const userEmail = metadata.userEmail;
+      const paymentId = event.object?.id;
+
+      let found = false;
+      if (userId) found = setPremium(userId, paymentId);
+      if (!found && userEmail) {
+        const u = findByEmail(userEmail);
+        if (u) found = setPremium(u.id, paymentId);
+      }
+      console.log(`[yookassa] Premium set: found=${found}, userId=${userId}, email=${userEmail}`);
+    }
+  } catch (err) {
+    console.error("[yookassa] Webhook error:", err.message);
+  }
+  res.json({ ok: true });
+});
+
+// GET /api/payment/status — frontend polls this to check premium status
+app.get("/api/payment/status", (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) return res.json({ isPremium: false });
+  const u = findById(user.id);
+  res.json({
+    isPremium: !!(u && u.isPremium),
+    premiumSince: (u && u.premiumSince) || null,
+  });
+});
 
 // ── Static frontend ──────────────────────────────────────────────────────────
 const distPath = path.join(__dirname, "dist");
