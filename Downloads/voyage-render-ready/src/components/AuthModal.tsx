@@ -22,14 +22,24 @@ export function AuthModal() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState(false);
 
-  const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
+  const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    if (!name.trim()) {
+      setError('Введите email');
+      return;
+    }
+
     if (mode === 'register' && !isValidEmail(name)) {
       setError('Введите корректный email');
+      return;
+    }
+
+    if (!password) {
+      setError('Введите пароль');
       return;
     }
 
@@ -46,12 +56,24 @@ export function AuthModal() {
     setLoading(true);
 
     const result = mode === 'login'
-      ? await login(name, password)
-      : await register(name, password, true);
+      ? await login(name.trim(), password)
+      : await register(name.trim(), password, true);
 
     setLoading(false);
     if (result.error) {
-      setError(result.error);
+      if (mode === 'login') {
+        setError('Неверный логин или пароль');
+      } else if (
+        result.error.toLowerCase().includes('taken') ||
+        result.error.toLowerCase().includes('exist') ||
+        result.error.toLowerCase().includes('занят')
+      ) {
+        setError('Этот email уже зарегистрирован. Попробуйте войти.');
+      } else if (result.error.toLowerCase().includes('terms') || result.error.toLowerCase().includes('accept')) {
+        setError('Подтвердите согласие с правилами сервиса');
+      } else {
+        setError('Ошибка регистрации. Попробуйте снова.');
+      }
     } else {
       setName('');
       setPassword('');

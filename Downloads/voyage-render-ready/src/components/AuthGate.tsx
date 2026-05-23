@@ -7,7 +7,7 @@ import { useLegalModal } from '@/lib/legal-modal-context';
 type Tab = 'login' | 'register';
 
 function isValidEmail(v: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
 export function AuthGate() {
@@ -31,16 +31,29 @@ export function AuthGate() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !password) return;
-    if (tab === 'register' && !agreed) return;
+
+    if (!name.trim()) {
+      setError('Введите email');
+      return;
+    }
 
     if (tab === 'register' && !isValidEmail(name)) {
       setError('Введите корректный email');
       return;
     }
 
+    if (!password) {
+      setError('Введите пароль');
+      return;
+    }
+
     if (tab === 'register' && password.length < 6) {
       setError('Пароль должен быть не короче 6 символов');
+      return;
+    }
+
+    if (tab === 'register' && !agreed) {
+      setError('Подтвердите согласие с правилами сервиса');
       return;
     }
 
@@ -57,10 +70,16 @@ export function AuthGate() {
     if (result.error) {
       if (tab === 'login') {
         setError('Неверный логин или пароль');
-      } else if (result.error.toLowerCase().includes('taken') || result.error.toLowerCase().includes('exist')) {
-        setError('Это имя уже занято. Выберите другое.');
+      } else if (
+        result.error.toLowerCase().includes('taken') ||
+        result.error.toLowerCase().includes('exist') ||
+        result.error.toLowerCase().includes('занят')
+      ) {
+        setError('Этот email уже зарегистрирован. Попробуйте войти.');
+      } else if (result.error.toLowerCase().includes('terms') || result.error.toLowerCase().includes('accept')) {
+        setError('Подтвердите согласие с правилами сервиса');
       } else {
-        setError(result.error);
+        setError('Ошибка регистрации. Попробуйте снова.');
       }
     } else if (tab === 'register') {
       try { localStorage.setItem('voyage_agreement_accepted', new Date().toISOString()); } catch (_) { /* ignore */ }
