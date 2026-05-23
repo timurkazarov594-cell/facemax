@@ -693,7 +693,7 @@ export default function Results() {
           >
             <h2 className="text-3xl font-serif mb-8 border-b border-border pb-4">{t('results.restaurants')}</h2>
             <div className="flex overflow-x-auto pb-4 -mx-4 px-4 snap-x snap-mandatory gap-5 no-scrollbar">
-              {result.restaurants.map((rest, i) => (
+              {(result.restaurants ?? []).map((rest, i) => (
                 <div
                   key={i}
                   className="snap-start shrink-0 w-[280px] md:w-[360px] flex flex-col bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-colors duration-300"
@@ -800,7 +800,7 @@ export default function Results() {
           >
             <h2 className="text-3xl font-serif mb-12 border-b border-border pb-4">{t('results.itinerary')}</h2>
             <div className="space-y-10 max-w-4xl mx-auto">
-              {result.dayPlan.map((day, i) => (
+              {(result.dayPlan ?? []).map((day, i) => (
                 <div key={i} data-testid={`card-day-${day.day}`}>
                   <div className="md:grid md:grid-cols-[120px_1fr] gap-8 items-start">
                     <div className="hidden md:flex justify-end pt-1">

@@ -293,131 +293,247 @@ app.delete("/api/voyage/trips/:tripId", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Normalize AI response into the exact schema the frontend expects ─────────
+function normalizeResult(raw, params) {
+  if (!raw || typeof raw !== "object") raw = {};
+  const { destination, city, duration, customDuration, guests = "2", language = "en" } = params;
+  const effectiveDuration = customDuration || duration || "7 nights";
+  const nights = parseInt(String(effectiveDuration)) || 5;
+  const dest = raw.destination || destination || "your destination";
+  const enc = encodeURIComponent;
+
+  // ── dayPlan: handle all shapes AI might return ──
+  let dayPlan = [];
+  if (Array.isArray(raw.dayPlan) && raw.dayPlan.length > 0) {
+    dayPlan = raw.dayPlan.map((d, i) => ({
+      day: d.day ?? i + 1,
+      title: d.title || `Day ${i + 1}`,
+      morning: typeof d.morning === "string" ? d.morning : (d.morning && d.morning.activity) || "Morning exploration",
+      afternoon: typeof d.afternoon === "string" ? d.afternoon : (d.afternoon && d.afternoon.activity) || "Afternoon activities",
+      evening: typeof d.evening === "string" ? d.evening : (d.evening && d.evening.activity) || "Evening relaxation",
+    }));
+  } else if (Array.isArray(raw.days) && raw.days.length > 0) {
+    dayPlan = raw.days.map((d, i) => ({
+      day: d.day ?? i + 1,
+      title: d.title || `Day ${i + 1}`,
+      morning: typeof d.morning === "string" ? d.morning : "Morning exploration",
+      afternoon: typeof d.afternoon === "string" ? d.afternoon : "Afternoon activities",
+      evening: typeof d.evening === "string" ? d.evening : "Evening relaxation",
+    }));
+  } else if (Array.isArray(raw.itinerary) && raw.itinerary.length > 0) {
+    // Legacy shape: {day, title, activities[]}
+    dayPlan = raw.itinerary.map((d, i) => {
+      const acts = Array.isArray(d.activities) ? d.activities : [];
+      const bySlot = (slots) => acts.find(a => slots.some(s => String(a.time || "").startsWith(s)));
+      return {
+        day: d.day ?? i + 1,
+        title: d.title || `Day ${i + 1}`,
+        morning: (bySlot(["08","09","10"]) || acts[0] || {}).description || "Morning exploration",
+        afternoon: (bySlot(["12","13","14","15"]) || acts[1] || {}).description || "Afternoon activities",
+        evening: (bySlot(["17","18","19","20"]) || acts[2] || {}).description || "Evening relaxation",
+      };
+    });
+  }
+  // Pad to required length
+  while (dayPlan.length < nights) {
+    const i = dayPlan.length;
+    dayPlan.push({ day: i + 1, title: `Day ${i + 1}`, morning: `Explore ${dest} in the morning.`, afternoon: "Visit local attractions.", evening: "Dinner at a local restaurant." });
+  }
+
+  // ── hotel ──
+  const rh = raw.hotel || {};
+  const hotelName = rh.name || `${dest} Premier Hotel`;
+  const hotel = {
+    name: hotelName,
+    nameEn: rh.nameEn || hotelName,
+    rating: rh.rating ?? rh.stars ?? 4,
+    location: rh.location || rh.area || city || dest,
+    pricePerNight: typeof rh.pricePerNight === "number" ? `$${rh.pricePerNight}/night` : rh.pricePerNight || "$150/night",
+    roomType: rh.roomType || "Standard Room",
+    nightsCount: rh.nightsCount ?? nights,
+    roomsNeeded: rh.roomsNeeded ?? 1,
+    hotelTotal: typeof rh.hotelTotal === "number" ? `$${rh.hotelTotal}` : rh.hotelTotal || "",
+    description: rh.description || `A comfortable hotel in ${dest}.`,
+    whyItFits: rh.whyItFits || rh.reason || "Excellent location and amenities.",
+    amenities: Array.isArray(rh.amenities) ? rh.amenities : ["Wi-Fi", "restaurant", "concierge"],
+    tags: Array.isArray(rh.tags) ? rh.tags : [],
+    imagePrompt: rh.imagePrompt || `${hotelName} hotel exterior ${dest}`,
+    imageUrl: rh.imageUrl || "",
+    photosUrl: rh.photosUrl || `https://www.booking.com/search.html?ss=${enc(hotelName)}`,
+    hotelUrl: rh.hotelUrl || `https://www.booking.com/searchresults.html?aid=529629&ss=${enc(hotelName)}+${enc(dest)}`,
+  };
+
+  // ── restaurants ──
+  const rests = Array.isArray(raw.restaurants) ? raw.restaurants : [];
+  const restaurants = rests.length > 0 ? rests.map(r => ({
+    name: r.name || "Local Restaurant",
+    style: r.style || r.cuisine || "Local",
+    averageCheck: r.averageCheck || r.priceRange || "$25-45/person",
+    whyItFits: r.whyItFits || r.description || "Great local dining.",
+    location: r.location || r.area || dest,
+    imagePrompt: r.imagePrompt || `${r.name} restaurant ${dest}`,
+  })) : [
+    { name: `${dest} Heritage Kitchen`, style: "Local", averageCheck: "$20-40/person", whyItFits: "Authentic local flavours.", location: dest, imagePrompt: "" },
+    { name: "The Grand Brasserie", style: "International", averageCheck: "$35-60/person", whyItFits: "Modern cuisine with a great atmosphere.", location: dest, imagePrompt: "" },
+  ];
+
+  // ── activities ──
+  const rawActs = Array.isArray(raw.activities) ? raw.activities : [];
+  const activities = rawActs.map(a => ({
+    name: a.name || "Local Activity",
+    duration: a.duration || "2 hours",
+    price: a.price != null ? String(a.price) : "$25",
+    included: a.included === true,
+    whyItFits: a.whyItFits || a.description || "A great local experience.",
+    imagePrompt: a.imagePrompt || "",
+  }));
+
+  // ── budgetBreakdown ──
+  const rb = raw.budgetBreakdown || {};
+  const fmt = v => typeof v === "number" ? `$${v}` : (v || "");
+  const budgetBreakdown = {
+    hotel: fmt(rb.hotel),
+    flightEstimate: fmt(rb.flightEstimate || rb.flights),
+    food: fmt(rb.food),
+    activities: fmt(rb.activities),
+    transport: fmt(rb.transport),
+    total: fmt(rb.total),
+    guests: String(rb.guests || guests),
+    ...(rb.airportTransfer ? { airportTransfer: fmt(rb.airportTransfer) } : {}),
+    ...(rb.cityTax ? { cityTax: fmt(rb.cityTax) } : {}),
+    ...((rb.travelInsurance || rb.insurance) ? { travelInsurance: fmt(rb.travelInsurance || rb.insurance) } : {}),
+    ...(rb.visa ? { visa: fmt(rb.visa) } : {}),
+    ...(rb.shopping ? { shopping: fmt(rb.shopping) } : {}),
+  };
+
+  return {
+    destination: dest,
+    city: raw.city || city || dest,
+    explanation: raw.explanation || raw.summary || `A curated travel experience for ${dest}, crafted to match your travel style.`,
+    hotel,
+    restaurants,
+    activities,
+    dayPlan,
+    budgetBreakdown,
+    ...(raw.fromMock || raw.isFallback ? { fromMock: true } : {}),
+  };
+}
+
 // ── Fallback itinerary (used when OpenAI is unavailable) ─────────────────────
 function generateFallbackPlan(params) {
-  const { destination, city, duration, budget, travelLevel, language,
-    guests = "2", customBudget, customDuration } = params;
+  const { destination, city, duration, travelLevel = "comfort",
+    guests = "2", customDuration } = params;
   const effectiveDuration = customDuration || duration || "7 nights";
-  const effectiveBudget = customBudget || budget || "moderate";
-  const lang = language || "en";
-
-  // Parse number of nights from duration string (e.g. "7 nights" → 7)
   const nights = parseInt(String(effectiveDuration)) || 5;
   const dest = destination || "your destination";
   const cityName = city || dest;
   const enc = encodeURIComponent;
+  const guestCount = parseInt(guests) || 2;
 
-  const days = [];
-  const dayTitles = [
+  // day-by-day plan with morning/afternoon/evening strings (matches VoyageDayEntry)
+  const TITLES = [
     "Arrival & First Impressions", "City Exploration", "Cultural Highlights",
-    "Local Experiences", "Day Trip & Adventure", "Shopping & Leisure", "Departure Day"
+    "Local Experiences", "Day Trip & Adventure", "Shopping & Leisure", "Departure Day",
   ];
-  const activitySets = [
-    [
-      { time: "14:00", title: "Hotel Check-in", description: `Settle into your accommodation in ${cityName}.`, price: 0, tags: ["accommodation"] },
-      { time: "16:00", title: "Neighbourhood Walk", description: `Explore the streets and atmosphere around your hotel in ${cityName}.`, price: 0, tags: ["free", "walking"] },
-      { time: "19:00", title: "Welcome Dinner", description: `Enjoy a local dinner at a restaurant near your hotel.`, price: 40, tags: ["food", "local"] },
-    ],
-    [
-      { time: "09:00", title: "Morning City Tour", description: `Visit the main landmarks and squares of ${cityName}.`, price: 25, tags: ["sightseeing"] },
-      { time: "12:30", title: "Lunch at Local Café", description: "Sample regional dishes at a well-rated café.", price: 20, tags: ["food"] },
-      { time: "15:00", title: "Museum Visit", description: `Explore a top cultural museum in ${dest}.`, price: 15, tags: ["culture", "indoor"] },
-      { time: "18:00", title: "Sunset Viewpoint", description: "Catch panoramic views at a popular lookout spot.", price: 0, tags: ["free", "scenic"] },
-    ],
-    [
-      { time: "09:30", title: "Historic District Tour", description: `Walk through the historic heart of ${cityName}.`, price: 0, tags: ["walking", "history"] },
-      { time: "12:00", title: "Traditional Lunch", description: `Try the most iconic local dish of ${dest}.`, price: 18, tags: ["food", "local"] },
-      { time: "14:30", title: "Art Gallery", description: "Browse contemporary and traditional local art.", price: 12, tags: ["culture", "art"] },
-      { time: "17:00", title: "Evening Market", description: "Browse a vibrant local market for souvenirs.", price: 0, tags: ["free", "shopping"] },
-    ],
-    [
-      { time: "08:00", title: "Morning Excursion", description: `Join a guided half-day excursion around ${dest}.`, price: 55, tags: ["guided", "outdoor"] },
-      { time: "13:00", title: "Lunch on the Go", description: "Grab street food or a quick café bite.", price: 12, tags: ["food"] },
-      { time: "15:30", title: "Cooking Class", description: `Learn to prepare a traditional dish from ${dest}.`, price: 65, tags: ["experience", "food"] },
-      { time: "19:30", title: "Rooftop Dinner", description: "Dine with a view over the city skyline.", price: 50, tags: ["food", "scenic"] },
-    ],
-    [
-      { time: "09:00", title: "Full-Day Trip", description: `Day trip to a scenic spot outside ${cityName}.`, price: 40, tags: ["outdoor", "nature"] },
-      { time: "13:00", title: "Picnic Lunch", description: "Enjoy a relaxed outdoor lunch at the destination.", price: 15, tags: ["food", "outdoor"] },
-      { time: "16:00", title: "Return & Relax", description: "Head back and unwind at the hotel.", price: 0, tags: ["leisure"] },
-      { time: "20:00", title: "Dinner at Hotel Restaurant", description: "Enjoy a relaxing dinner before your last full day.", price: 35, tags: ["food"] },
-    ],
-    [
-      { time: "10:00", title: "Shopping District", description: `Browse the best shopping areas in ${cityName}.`, price: 0, tags: ["shopping"] },
-      { time: "13:00", title: "Café Lunch", description: "Relax at a trendy local café.", price: 20, tags: ["food", "leisure"] },
-      { time: "15:30", title: "Spa Treatment", description: "Treat yourself to a local spa or hammam experience.", price: 70, tags: ["wellness"] },
-      { time: "19:00", title: "Farewell Dinner", description: `Celebrate your last evening in ${dest} at a top-rated restaurant.`, price: 60, tags: ["food", "special"] },
-    ],
-    [
-      { time: "09:00", title: "Last Morning Walk", description: `One final stroll through ${cityName} before checkout.`, price: 0, tags: ["free", "walking"] },
-      { time: "11:00", title: "Hotel Checkout", description: "Check out and store luggage if needed.", price: 0, tags: ["logistics"] },
-      { time: "12:00", title: "Airport Transfer", description: `Travel to the airport and depart ${dest}.`, price: 25, tags: ["transport"] },
-    ],
+  const MORNINGS = [
+    `Arrive at ${cityName} and check into your hotel. Take a refreshing shower and enjoy a welcome drink.`,
+    `Start your day with breakfast at a local café, then head to the main squares and central landmarks of ${cityName}.`,
+    `Visit the most important historical sites and museums in ${cityName} — an unmissable cultural experience.`,
+    `Join a guided local tour or cooking class to experience authentic ${dest} culture firsthand.`,
+    `Set out early for a full-day scenic excursion outside ${cityName} to explore natural or historic highlights.`,
+    `Explore the best shopping districts and boutiques of ${cityName} for souvenirs and local crafts.`,
+    `Enjoy a final leisurely breakfast and take a last stroll around your favourite neighbourhood.`,
+  ];
+  const AFTERNOONS = [
+    `Explore the neighbourhood around your hotel at your own pace. Stop at a local café for your first taste of ${dest} cuisine.`,
+    `Visit a renowned museum or art gallery. Enjoy a relaxed lunch at a well-regarded local restaurant.`,
+    `Wander through colourful local markets and parks. Sample street food and soak in the atmosphere.`,
+    `Explore artisan workshops, local galleries, and hidden gem spots recommended by residents.`,
+    `Enjoy nature, countryside, or coastal scenery. Have a relaxed picnic or lunch at the destination.`,
+    `Visit a local spa, hammam, or wellness centre for an afternoon of relaxation and rejuvenation.`,
+    `Check out of the hotel. Store luggage and spend remaining hours at a favourite café or viewpoint.`,
+  ];
+  const EVENINGS = [
+    `Enjoy a welcome dinner at a well-rated local restaurant. Toast to the start of your ${dest} adventure.`,
+    `Watch the sunset from a rooftop terrace or scenic viewpoint. Dinner at a restaurant recommended by locals.`,
+    `Dinner at a traditional restaurant featuring the most iconic dishes of ${dest}. Try the local speciality.`,
+    `Evening at a local cultural performance, jazz bar, or rooftop lounge for an authentic night out.`,
+    `Return to ${cityName} and enjoy a relaxing rooftop dinner with panoramic city views.`,
+    `Farewell dinner at the best restaurant of your trip — celebrate your final evening in style.`,
+    `Transfer to the airport. Safe travels and wonderful memories from ${dest}!`,
   ];
 
+  const dayPlan = [];
   for (let i = 0; i < Math.min(nights, 7); i++) {
-    days.push({
+    dayPlan.push({
       day: i + 1,
-      title: dayTitles[i] || `Day ${i + 1}`,
-      activities: activitySets[i] || activitySets[2],
+      title: TITLES[i] || `Day ${i + 1}`,
+      morning: MORNINGS[i] || `Explore ${dest} in the morning.`,
+      afternoon: AFTERNOONS[i] || "Visit local attractions.",
+      evening: EVENINGS[i] || "Dinner at a local restaurant.",
     });
   }
+  // Pad beyond 7 days
+  while (dayPlan.length < nights) {
+    const i = dayPlan.length;
+    dayPlan.push({ day: i + 1, title: `Day ${i + 1}`, morning: `Explore ${dest}.`, afternoon: "Visit local attractions.", evening: "Dinner at a local restaurant." });
+  }
 
-  const nighPrice = travelLevel === "luxury" ? 320 : travelLevel === "business" ? 180 : 90;
-  const hotelTotal = nighPrice * nights;
+  const nightPrice = travelLevel === "luxury" ? 320 : travelLevel === "business" ? 180 : 90;
+  const hotelTotalNum = nightPrice * nights;
   const flightCost = 600;
-  const foodCost = 35 * nights * parseInt(guests);
-  const actCost = 80 * nights;
+  const foodCost = 30 * nights * guestCount;
+  const actCost = 70 * nights;
   const transCost = 120;
-  const total = hotelTotal + flightCost + foodCost + actCost + transCost;
+  const totalNum = hotelTotalNum + flightCost + foodCost + actCost + transCost;
 
-  const hotelNames = {
-    luxury: `${dest} Grand Palace Hotel`,
-    business: `${dest} Executive Suites`,
-    budget: `${dest} Central Guesthouse`,
-  };
-  const hotelName = hotelNames[travelLevel] || `${dest} Premier Hotel`;
-  const hotelSlug = enc(hotelName);
-  const destSlug = enc(dest);
+  const hotelName = travelLevel === "luxury"
+    ? `${dest} Grand Palace Hotel`
+    : travelLevel === "business" ? `${dest} Executive Suites` : `${dest} Premier Hotel`;
 
   return {
     destination: dest,
     city: cityName,
-    duration: effectiveDuration,
-    language: lang,
-    currency: "USD",
-    bestTimeToVisit: "Spring and autumn offer the most pleasant weather",
-    isFallback: true,
+    explanation: `A carefully curated ${effectiveDuration} travel plan for ${dest}, designed to match your travel style with the best local experiences, dining, and accommodation.`,
+    fromMock: true,
     hotel: {
       name: hotelName,
-      stars: travelLevel === "luxury" ? 5 : travelLevel === "business" ? 4 : 3,
-      pricePerNight: nighPrice,
-      description: `A well-regarded hotel in the heart of ${cityName}, offering comfortable rooms and great amenities.`,
-      amenities: ["Wi-Fi", "breakfast", "concierge", "gym"],
-      bookingUrl: `https://www.booking.com/search.html?ss=${hotelSlug}`,
-      affiliateUrl: `https://www.booking.com/searchresults.html?aid=529629&ss=${hotelSlug}+${destSlug}`,
+      nameEn: hotelName,
+      rating: travelLevel === "luxury" ? 5 : travelLevel === "business" ? 4 : 3,
+      location: cityName,
+      pricePerNight: `$${nightPrice}/night`,
+      roomType: "Standard Room",
+      nightsCount: nights,
+      roomsNeeded: 1,
+      hotelTotal: `$${hotelTotalNum}`,
+      description: `A well-regarded hotel in the heart of ${cityName}, offering comfortable rooms, excellent service, and great amenities in a prime location.`,
+      whyItFits: `Perfectly located for exploring ${dest} with easy access to major attractions and dining.`,
+      amenities: ["Wi-Fi", "Breakfast", "Concierge", "Gym", "Restaurant"],
+      tags: [],
+      imagePrompt: `${hotelName} hotel exterior ${cityName}`,
+      imageUrl: "",
+      photosUrl: `https://www.booking.com/search.html?ss=${enc(hotelName)}`,
+      hotelUrl: `https://www.booking.com/searchresults.html?aid=529629&ss=${enc(hotelName)}+${enc(dest)}`,
     },
-    itinerary: days,
     restaurants: [
-      { name: `${cityName} Heritage Kitchen`, cuisine: "Local", priceRange: "$$", description: "Authentic local dishes in a cosy setting.", bookingUrl: "" },
-      { name: "The Grand Brasserie", cuisine: "International", priceRange: "$$$", description: "Modern cuisine with scenic views.", bookingUrl: "" },
-      { name: "Street Food Market", cuisine: "Street Food", priceRange: "$", description: "A lively market with dozens of local food stalls.", bookingUrl: "" },
+      { name: `${cityName} Heritage Kitchen`, style: "Local", averageCheck: "$20-40/person", whyItFits: `Authentic ${dest} dishes in a warm, traditional setting — perfect for your first taste.`, location: cityName, imagePrompt: "" },
+      { name: "The Grand Brasserie", style: "International", averageCheck: "$35-60/person", whyItFits: "Modern cuisine with an elegant atmosphere and scenic views.", location: cityName, imagePrompt: "" },
+      { name: "Street Food Market", style: "Street Food", averageCheck: "$8-15/person", whyItFits: "Lively, colourful market with dozens of local food stalls — the real taste of the city.", location: cityName, imagePrompt: "" },
     ],
+    activities: [
+      { name: "City Walking Tour", duration: "3 hours", price: "$25", included: false, whyItFits: `The best way to discover ${dest} on foot with a knowledgeable local guide.`, imagePrompt: "" },
+      { name: "Museum & Cultural Sites", duration: "2-4 hours", price: "$15", included: false, whyItFits: "Explore the history and art of the region at your own pace.", imagePrompt: "" },
+    ],
+    dayPlan,
     budgetBreakdown: {
-      hotel: hotelTotal,
-      flights: flightCost,
-      activities: actCost,
-      food: foodCost,
-      transport: transCost,
-      total,
+      hotel: `$${hotelTotalNum}`,
+      flightEstimate: `$${flightCost}`,
+      food: `$${foodCost}`,
+      activities: `$${actCost}`,
+      transport: `$${transCost}`,
+      total: `$${totalNum}`,
+      guests: String(guestCount),
     },
-    tips: [
-      `Book accommodations in advance, especially during peak season in ${dest}.`,
-      "Always carry some local currency for small purchases.",
-      `Check visa requirements for ${dest} well before your trip.`,
-      "Download offline maps to navigate without mobile data.",
-      "Respect local customs and dress codes, especially at religious sites.",
-    ],
   };
 }
 
@@ -535,81 +651,106 @@ app.get("/api/voyage/hotel-image", async (req, res) => {
   res.json({ url: null });
 });
 
-// ── OpenAI trip generation ───────────────────────────────────────────────────
+// ── OpenAI trip generation (with retry + normalization) ─────────────────────
 async function generateTripPlan(openai, params) {
-  const { destination, travelLevel, tripTypes = [], hotelPrefs = [], restaurantPrefs = [],
-    duration, budget, language = "en", guests = "2", roomType = "standard", city, customBudget, customDuration } = params;
+  const { destination, travelLevel = "comfort", tripTypes = [], hotelPrefs = [],
+    restaurantPrefs = [], duration, budget, language = "en", guests = "2",
+    roomType = "standard", city, customBudget, customDuration } = params;
 
-  const effectiveBudget = customBudget || budget;
-  const effectiveDuration = customDuration || duration;
+  const effectiveBudget = customBudget || budget || "moderate";
+  const effectiveDuration = customDuration || duration || "7 nights";
+  const nights = parseInt(String(effectiveDuration)) || 5;
   const lang = language === "ru" ? "Russian" : "English";
+  const destFull = city ? `${city}, ${destination}` : destination;
 
-  const systemPrompt = `You are an elite luxury travel concierge with deep knowledge of hotels, restaurants, activities, and local culture worldwide. Generate comprehensive, accurate travel itineraries. Always respond in ${lang}. Respond ONLY with valid JSON.`;
+  const systemPrompt = `You are an elite luxury travel concierge. Generate comprehensive, realistic travel itineraries. Always respond in ${lang}. Respond ONLY with valid JSON — no markdown, no code blocks, no text before or after the JSON.`;
 
-  const userPrompt = `Create a detailed travel plan for:
-- Destination: ${destination}${city ? ` (${city})` : ""}
+  const buildPrompt = (attempt) => `Create a detailed travel plan for:
+- Destination: ${destFull}
 - Travel style: ${travelLevel}
-- Trip types: ${tripTypes.join(", ") || "general"}
-- Hotel preferences: ${hotelPrefs.join(", ") || "none"}
-- Restaurant preferences: ${restaurantPrefs.join(", ") || "none"}
-- Duration: ${effectiveDuration}
-- Budget: ${effectiveBudget}
+- Trip types: ${tripTypes.join(", ") || "general sightseeing"}
+- Hotel preferences: ${hotelPrefs.join(", ") || "none specified"}
+- Restaurant preferences: ${restaurantPrefs.join(", ") || "none specified"}
+- Duration: ${effectiveDuration} (${nights} nights)
+- Budget level: ${effectiveBudget}
 - Guests: ${guests}
 - Room type: ${roomType}
+${attempt > 1 ? "\nCRITICAL: Return ONLY valid JSON. No markdown. No code blocks. Exactly the schema below." : ""}
 
-Return a JSON object with this exact structure:
+Return ONLY this JSON structure (no other text):
 {
-  "destination": "Country Name",
-  "city": "City Name",
-  "duration": "${effectiveDuration}",
+  "destination": "${destination}",
+  "city": "${city || destination}",
+  "explanation": "2-3 sentences about why this plan perfectly matches the traveler",
   "hotel": {
-    "name": "Hotel Name",
-    "stars": 5,
-    "pricePerNight": 250,
-    "description": "Brief description",
-    "amenities": ["pool", "spa", "gym"],
-    "bookingUrl": "https://www.booking.com/search.html?ss=Hotel+Name",
-    "affiliateUrl": "https://www.booking.com/searchresults.html?aid=529629&ss=Hotel+Name+${destination}"
+    "name": "Real hotel name in ${destFull}",
+    "rating": 5,
+    "location": "Specific neighbourhood or area",
+    "pricePerNight": "$XXX/night",
+    "roomType": "Room type name",
+    "nightsCount": ${nights},
+    "roomsNeeded": 1,
+    "hotelTotal": "$XXXX total",
+    "description": "2 sentences about the hotel",
+    "whyItFits": "Why this hotel matches the preferences",
+    "amenities": ["pool", "spa", "gym", "wifi", "breakfast"],
+    "tags": ["luxury", "central"]
   },
-  "itinerary": [
-    {
-      "day": 1,
-      "title": "Arrival & Exploration",
-      "activities": [
-        { "time": "10:00", "title": "Activity name", "description": "Details", "price": 0, "tags": ["free"] }
-      ]
-    }
-  ],
   "restaurants": [
-    { "name": "Restaurant Name", "cuisine": "Type", "priceRange": "$$", "description": "Details", "bookingUrl": "" }
+    { "name": "Restaurant name", "style": "Cuisine style", "averageCheck": "$XX-XX/person", "whyItFits": "Why it suits this traveler", "location": "Area/neighbourhood" },
+    { "name": "Restaurant 2", "style": "Cuisine style", "averageCheck": "$XX-XX/person", "whyItFits": "Why it suits", "location": "Area" },
+    { "name": "Restaurant 3", "style": "Cuisine style", "averageCheck": "$XX-XX/person", "whyItFits": "Why it suits", "location": "Area" }
+  ],
+  "activities": [
+    { "name": "Activity name", "duration": "X hours", "price": "$XX", "included": false, "whyItFits": "Why this suits the traveler" },
+    { "name": "Activity 2", "duration": "X hours", "price": "$XX", "included": false, "whyItFits": "Why this suits" },
+    { "name": "Activity 3", "duration": "X hours", "price": "Included", "included": true, "whyItFits": "Part of hotel package" }
+  ],
+  "dayPlan": [
+    { "day": 1, "title": "Arrival & First Impressions", "morning": "Detailed paragraph about morning", "afternoon": "Detailed paragraph about afternoon", "evening": "Detailed paragraph about evening" },
+    { "day": 2, "title": "Day title", "morning": "...", "afternoon": "...", "evening": "..." }
   ],
   "budgetBreakdown": {
-    "hotel": 1750,
-    "flights": 800,
-    "activities": 400,
-    "food": 350,
-    "transport": 150,
-    "total": 3450
-  },
-  "tips": ["Tip 1", "Tip 2"],
-  "bestTimeToVisit": "Spring and autumn",
-  "currency": "USD",
-  "language": "${language}"
-}`;
+    "hotel": "$${nights * 200}",
+    "flightEstimate": "$800",
+    "food": "$300",
+    "activities": "$250",
+    "transport": "$150",
+    "total": "$${nights * 200 + 1500}",
+    "guests": "${guests}"
+  }
+}
+dayPlan MUST have exactly ${nights} entries. morning/afternoon/evening MUST be plain strings (not objects). All arrays must be populated.`;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    response_format: { type: "json_object" },
-    max_tokens: 4000,
-    temperature: 0.7,
-  });
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      console.log(`[voyage] OpenAI attempt ${attempt}/3 for: ${destination}`);
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: buildPrompt(attempt) },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 4500,
+        temperature: attempt === 1 ? 0.7 : 0.4,
+      });
 
-  const raw = response.choices[0]?.message?.content || "{}";
-  return JSON.parse(raw);
+      let raw = (response.choices[0]?.message?.content || "{}").trim();
+      // Strip markdown code fences if model adds them despite instructions
+      raw = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+
+      const parsed = JSON.parse(raw);
+      console.log(`[voyage] OpenAI success on attempt ${attempt} for: ${destination}`);
+      return normalizeResult(parsed, params);
+    } catch (err) {
+      console.error(`[voyage] Attempt ${attempt}/3 failed for ${destination}:`, err.message);
+      lastError = err;
+      if (attempt < 3) await new Promise(r => setTimeout(r, 1500 * attempt));
+    }
+  }
+  throw lastError;
 }
 
 // ── Static frontend ──────────────────────────────────────────────────────────

@@ -2,8 +2,88 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { PlaneTakeoff, AlertCircle, RefreshCw } from 'lucide-react';
-import { usePlanContext } from '@/lib/plan-context';
+import { usePlanContext, type VoyagePlanResult } from '@/lib/plan-context';
 import { useT } from '@/lib/i18n';
+
+// Build a deterministic client-side fallback shown after 60-second timeout
+function buildClientFallback(ctx: ReturnType<typeof usePlanContext>): VoyagePlanResult {
+  const dest = ctx.destination || 'Your Destination';
+  const cityName = ctx.city || dest;
+  const nights = parseInt(ctx.duration) || 5;
+  const enc = encodeURIComponent;
+
+  const TITLES = ['Arrival & First Impressions', 'City Exploration', 'Cultural Highlights', 'Local Experiences', 'Day Trip & Adventure', 'Shopping & Leisure', 'Departure Day'];
+  const MORNINGS = [
+    `Arrive at ${cityName} and check into your hotel. Take a refreshing shower and enjoy a welcome drink.`,
+    `Breakfast at a local café, then explore the main squares and landmarks of ${cityName}.`,
+    `Visit the most important historical sites and museums in ${cityName}.`,
+    `Join a guided local tour or cooking class to experience authentic ${dest} culture.`,
+    `Set out early for a scenic day trip outside ${cityName} to explore natural highlights.`,
+    `Explore the best shopping districts and boutiques of ${cityName} for local crafts.`,
+    `Final leisurely breakfast and a last stroll around your favourite neighbourhood.`,
+  ];
+  const AFTERNOONS = [
+    `Explore the neighbourhood around your hotel. Stop at a local café for your first taste of ${dest}.`,
+    `Visit a renowned museum or art gallery, then enjoy lunch at a well-regarded local restaurant.`,
+    `Wander through colourful local markets and parks. Sample street food and soak in the atmosphere.`,
+    `Explore artisan workshops and hidden gems recommended by locals.`,
+    `Enjoy nature, countryside or coastal scenery. A relaxed picnic or lunch at the destination.`,
+    `Visit a local spa or wellness centre for an afternoon of relaxation and rejuvenation.`,
+    `Check out of the hotel. Store luggage and enjoy last moments at a favourite spot.`,
+  ];
+  const EVENINGS = [
+    `Welcome dinner at a well-rated local restaurant. Toast to the start of your ${dest} adventure.`,
+    `Sunset from a rooftop terrace or viewpoint, then dinner at a restaurant recommended by locals.`,
+    `Dinner at a traditional restaurant featuring the most iconic dishes of ${dest}.`,
+    `Evening at a local cultural performance, jazz bar, or rooftop lounge.`,
+    `Return to ${cityName} and enjoy a relaxing rooftop dinner with panoramic views.`,
+    `Farewell dinner at the best restaurant of your trip — celebrate your final evening in style.`,
+    `Transfer to the airport. Safe travels and wonderful memories from ${dest}!`,
+  ];
+
+  const dayPlan = Array.from({ length: Math.min(nights, 7) }, (_, i) => ({
+    day: i + 1,
+    title: TITLES[i] || `Day ${i + 1}`,
+    morning: MORNINGS[i] || `Explore ${dest} in the morning.`,
+    afternoon: AFTERNOONS[i] || 'Visit local attractions.',
+    evening: EVENINGS[i] || 'Dinner at a local restaurant.',
+  }));
+  while (dayPlan.length < nights) {
+    const i = dayPlan.length;
+    dayPlan.push({ day: i + 1, title: `Day ${i + 1}`, morning: `Explore ${dest}.`, afternoon: 'Visit local attractions.', evening: 'Dinner at a local restaurant.' });
+  }
+
+  const hotelName = `${dest} Premier Hotel`;
+  return {
+    destination: dest,
+    explanation: `A curated travel plan for ${dest}, designed to match your travel style with the best local experiences.`,
+    hotel: {
+      name: hotelName,
+      rating: 4,
+      pricePerNight: '$150/night',
+      description: `A comfortable hotel in the heart of ${cityName} with excellent service and a prime location.`,
+      whyItFits: `Perfectly located for exploring ${dest} with easy access to major attractions.`,
+      amenities: ['Wi-Fi', 'Breakfast', 'Gym', 'Concierge', 'Restaurant'],
+      imagePrompt: '',
+      location: cityName,
+      hotelUrl: `https://www.booking.com/searchresults.html?aid=529629&ss=${enc(dest)}`,
+      imageUrl: '',
+      photosUrl: `https://www.booking.com/search.html?ss=${enc(hotelName)}`,
+    },
+    restaurants: [
+      { name: `${dest} Heritage Kitchen`, style: 'Local', averageCheck: '$20-40/person', whyItFits: 'Authentic local flavours in a warm traditional setting.', location: cityName, imagePrompt: '' },
+      { name: 'The Grand Brasserie', style: 'International', averageCheck: '$35-60/person', whyItFits: 'Modern cuisine with a great atmosphere.', location: cityName, imagePrompt: '' },
+    ],
+    activities: [],
+    dayPlan,
+    budgetBreakdown: {
+      hotel: '', food: '', activities: '', transport: '',
+      total: 'Varies by preferences',
+      guests: ctx.guests || '2',
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+}
 
 function useRestoreFromSession(ctx: ReturnType<typeof usePlanContext>) {
   const restored = useRef(false);
@@ -49,6 +129,7 @@ export default function Loading() {
   const [serverError, setServerError] = useState('');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasFetched = useRef(false);
 
   useRestoreFromSession(planContext);
@@ -62,8 +143,12 @@ export default function Loading() {
     }
   }, []);
 
-  // Cleanup poll interval on unmount
-  useEffect(() => () => clearPoll(), [clearPoll]);
+  const clearTimeout_ = useCallback(() => {
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+  }, []);
+
+  // Cleanup poll interval and timeout on unmount
+  useEffect(() => () => { clearPoll(); clearTimeout_(); }, [clearPoll, clearTimeout_]);
 
   const doFetch = useCallback(() => {
     clearPoll();
@@ -100,6 +185,15 @@ export default function Loading() {
       .then(({ jobId }) => {
         setJobStatus('polling');
 
+        // 60-second safety timeout — show deterministic fallback instead of error screen
+        clearTimeout_();
+        timeoutRef.current = setTimeout(() => {
+          clearPoll();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setResult(buildClientFallback(planContext) as any);
+          setLocation('/results');
+        }, 60000);
+
         pollRef.current = setInterval(() => {
           fetch(`/api/voyage/job/${jobId}`)
             .then((r) => r.ok ? r.json() as Promise<{ status: string; result?: Record<string, unknown>; message?: string }> : null)
@@ -107,11 +201,13 @@ export default function Loading() {
               if (!job) return;
               if (job.status === 'done' && job.result) {
                 clearPoll();
+                clearTimeout_();
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 setResult(job.result as any);
                 setLocation('/results');
               } else if (job.status === 'error') {
                 clearPoll();
+                clearTimeout_();
                 setServerError(job.message ?? '');
                 setJobStatus('error');
               }
@@ -120,6 +216,7 @@ export default function Loading() {
         }, 3000);
       })
       .catch(() => {
+        clearTimeout_();
         setJobStatus('error');
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
