@@ -10,9 +10,9 @@ import { usePlanContext } from '@/lib/plan-context';
 import { useT } from '@/lib/i18n';
 import { isDevUnlocked } from '@/lib/dev-bypass';
 import { DestinationSearch } from '@/components/DestinationSearch';
+import { useAuth } from '@/lib/auth-context';
 
-// ── Set to true to re-enable the paywall for production ──
-const PAYWALL_ENABLED = false;
+const PAYWALL_ENABLED = true;
 
 const TOTAL_STEPS = 9;
 
@@ -44,12 +44,15 @@ export default function Plan() {
   const [, setLocation] = useLocation();
   const ctx = usePlanContext();
 
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
 
   const nextStep = () => { if (step < TOTAL_STEPS) { setDirection(1); setStep(s => s + 1); } };
   const prevStep = () => { if (step > 1) { setDirection(-1); setStep(s => s - 1); } };
-  const handleSubmit = () => setLocation((!PAYWALL_ENABLED || isDevUnlocked()) ? '/loading' : '/paywall');
+  const handleSubmit = () => setLocation(
+    (!PAYWALL_ENABLED || isDevUnlocked() || user?.isPremium) ? '/loading' : '/paywall'
+  );
 
   const slideVariants = {
     enter: (d: number) => ({ x: d > 0 ? 800 : -800, opacity: 0 }),
