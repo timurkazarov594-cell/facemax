@@ -19,8 +19,7 @@
     "openai": "^6.36.0",
     "pino": "^9.7.0",
     "pino-http": "^10.4.0",
-    "pino-pretty": "^13.0.0",
-    "uuid": "^14.0.0"
+    "pino-pretty": "^13.0.0"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

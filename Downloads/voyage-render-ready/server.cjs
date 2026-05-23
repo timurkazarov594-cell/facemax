@@ -1,10 +1,10 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const session = require("express-session");
 const cors = require("cors");
-const { v4: uuidv4 } = require("uuid");
 const { OpenAI } = require("openai");
 
 const app = express();
@@ -173,7 +173,7 @@ function getOpenAI() {
 const jobs = new Map();
 
 function createJob() {
-  const id = uuidv4();
+  const id = crypto.randomUUID();
   jobs.set(id, { id, status: "pending", result: null, error: null, createdAt: Date.now() });
   // Clean up old jobs (keep last 200)
   if (jobs.size > 200) {
@@ -200,8 +200,8 @@ app.post("/api/auth/register", async (req, res) => {
 
   const now = new Date().toISOString();
   const passwordHash = await bcrypt.hash(password, 10);
-  const token = uuidv4();
-  const user = { id: uuidv4(), name: trimmed, passwordHash, createdAt: now, isPremium: false, trips: [], sessionToken: token, termsAcceptedAt: now };
+  const token = crypto.randomUUID();
+  const user = { id: crypto.randomUUID(), name: trimmed, passwordHash, createdAt: now, isPremium: false, trips: [], sessionToken: token, termsAcceptedAt: now };
   createUser(user);
   req.session.userId = user.id;
   res.status(201).json({ user: { id: user.id, name: user.name, isPremium: user.isPremium }, token });
@@ -214,7 +214,7 @@ app.post("/api/auth/login", async (req, res) => {
   if (!user) return res.status(401).json({ error: "Invalid name or password" });
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "Invalid name or password" });
-  const token = uuidv4();
+  const token = crypto.randomUUID();
   setSessionToken(user.id, token);
   req.session.userId = user.id;
   res.json({ user: { id: user.id, name: user.name, isPremium: user.isPremium }, token });
@@ -245,7 +245,7 @@ app.post("/api/voyage/save-trip", (req, res) => {
   if (!user) return res.status(401).json({ error: "Login required" });
   const { destination, city, duration, hotelName, data } = req.body || {};
   if (!destination || !data) return res.status(400).json({ error: "destination and data required" });
-  const trip = { id: uuidv4(), createdAt: new Date().toISOString(), destination, city, duration: duration || "", hotelName, data };
+  const trip = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), destination, city, duration: duration || "", hotelName, data };
   addTrip(user.id, trip);
   res.status(201).json({ trip });
 });
@@ -278,7 +278,7 @@ app.post("/api/voyage/plan-async", async (req, res) => {
     jobs.get(jobId).result = cached.result;
     // Auto-save for user
     const r = cached.result;
-    const trip = { id: uuidv4(), createdAt: new Date().toISOString(), destination: r.destination || destination, city: r.city || city, duration: r.duration || duration, hotelName: r.hotel && r.hotel.name, data: r };
+    const trip = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), destination: r.destination || destination, city: r.city || city, duration: r.duration || duration, hotelName: r.hotel && r.hotel.name, data: r };
     addTrip(user.id, trip);
     return res.json({ jobId, cached: true });
   }
@@ -297,7 +297,7 @@ app.post("/api/voyage/plan-async", async (req, res) => {
       job.status = "done";
       job.result = result;
       saveToCache(cacheKey, { destination, city, duration: customDuration || duration, guests, budget: customBudget || budget, travelLevel, roomType: roomType || "standard", tripTypes, hotelPrefs, language }, result);
-      const trip = { id: uuidv4(), createdAt: new Date().toISOString(), destination: result.destination || destination, city: result.city || city, duration: result.duration || duration, hotelName: result.hotel && result.hotel.name, data: result };
+      const trip = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), destination: result.destination || destination, city: result.city || city, duration: result.duration || duration, hotelName: result.hotel && result.hotel.name, data: result };
       addTrip(user.id, trip);
     } catch (err) {
       job.status = "error";
