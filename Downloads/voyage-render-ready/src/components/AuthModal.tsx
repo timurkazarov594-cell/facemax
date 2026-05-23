@@ -22,9 +22,21 @@ export function AuthModal() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState(false);
 
+  const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (mode === 'register' && !isValidEmail(name)) {
+      setError('Введите корректный email');
+      return;
+    }
+
+    if (mode === 'register' && password.length < 6) {
+      setError('Пароль должен быть не короче 6 символов');
+      return;
+    }
 
     if (mode === 'register' && !termsAccepted) {
       setTermsError(true);
@@ -112,16 +124,16 @@ export function AuthModal() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Name */}
+              {/* Email */}
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
                 <input
                   type="text"
+                  inputMode="email"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder={t('auth.name')}
-                  autoComplete="username"
-                  required
+                  placeholder="example@mail.com"
+                  autoComplete="email"
                   className="w-full bg-neutral-900 border border-border/60 rounded-xl pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
                 />
               </div>

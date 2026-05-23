@@ -6,6 +6,10 @@ import { useLegalModal } from '@/lib/legal-modal-context';
 
 type Tab = 'login' | 'register';
 
+function isValidEmail(v: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
+}
+
 export function AuthGate() {
   const { login, register } = useAuth();
   const { openLegal } = useLegalModal();
@@ -30,8 +34,13 @@ export function AuthGate() {
     if (!name.trim() || !password) return;
     if (tab === 'register' && !agreed) return;
 
+    if (tab === 'register' && !isValidEmail(name)) {
+      setError('Введите корректный email');
+      return;
+    }
+
     if (tab === 'register' && password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
+      setError('Пароль должен быть не короче 6 символов');
       return;
     }
 
@@ -106,13 +115,14 @@ export function AuthGate() {
             className="space-y-4"
           >
             <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground/50 uppercase tracking-widest">Логин</label>
+              <label className="text-xs text-muted-foreground/50 uppercase tracking-widest">Email</label>
               <input
                 type="text"
+                inputMode="email"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={tab === 'login' ? 'Имя пользователя' : 'Придумайте имя'}
-                autoComplete={tab === 'login' ? 'username' : 'username'}
+                placeholder="example@mail.com"
+                autoComplete="email"
                 autoFocus
                 className="w-full bg-neutral-900/70 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-muted-foreground/25 outline-none focus:border-primary/50 focus:bg-neutral-900 transition-colors"
               />
