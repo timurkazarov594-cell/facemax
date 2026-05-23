@@ -66,11 +66,15 @@ export function AuthModal() {
       } else if (
         result.error.toLowerCase().includes('taken') ||
         result.error.toLowerCase().includes('exist') ||
-        result.error.toLowerCase().includes('занят')
+        result.error.toLowerCase().includes('занят') ||
+        result.error.toLowerCase().includes('существует') ||
+        result.error.toLowerCase().includes('зарегистрирован')
       ) {
-        setError('Этот email уже зарегистрирован. Попробуйте войти.');
+        setError('Пользователь уже существует');
       } else if (result.error.toLowerCase().includes('terms') || result.error.toLowerCase().includes('accept')) {
         setError('Подтвердите согласие с правилами сервиса');
+      } else if (result.error.toLowerCase().includes('сервер') || result.error.toLowerCase().includes('server')) {
+        setError('Ошибка сервера. Попробуйте позже.');
       } else {
         setError('Ошибка регистрации. Попробуйте снова.');
       }
