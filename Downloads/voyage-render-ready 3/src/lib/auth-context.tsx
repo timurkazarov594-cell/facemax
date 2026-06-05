@@ -28,6 +28,7 @@ interface AuthContextType {
   login: (name: string, password: string) => Promise<{ error?: string }>;
   register: (name: string, password: string, termsAccepted?: boolean) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<{ error?: string }>;
   refreshPremiumStatus: () => Promise<void>;
   saveTrip: (
     data: Record<string, unknown>,
@@ -352,6 +353,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { /* ignore */ }
   };
 
+  // ── Delete account ───────────────────────────────────────────────────────────
+  const deleteAccount = async (): Promise<{ error?: string }> => {
+    if (!user) return { error: 'Не авторизован' };
+
+    if (isLocalToken(token)) {
+      // Remove from localStorage
+      const users = readLocalUsers().filter(u => u.id !== user.id);
+      writeLocalUsers(users);
+      setUser(null);
+      setToken(null);
+      writeLS(null);
+      setSavedTrips([]);
+      return {};
+    }
+
+    // Backend account
+    try {
+      await apiFetch('/account', { method: 'DELETE' }, token);
+    } catch (e) {
+      console.error('[deleteAccount]', e);
+      return { error: (e as Error).message ?? 'Ошибка удаления аккаунта' };
+    }
+    setUser(null);
+    setToken(null);
+    writeLS(null);
+    setSavedTrips([]);
+    return {};
+  };
+
   // ── Logout ──────────────────────────────────────────────────────────────────
   const logout = async () => {
     if (!isLocalToken(token)) {
@@ -455,7 +485,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tripsModalOpen,
       openTripsModal: () => { setTripsModalOpen(true); loadTripsForUser(); },
       closeTripsModal: () => setTripsModalOpen(false),
-      login, register, logout, refreshPremiumStatus,
+      login, register, logout, deleteAccount, refreshPremiumStatus,
       saveTrip, deleteTrip, savedTrips,
       refreshTrips: () => loadTripsForUser(),
     }}>

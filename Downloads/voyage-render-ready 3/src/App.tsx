@@ -1,3 +1,4 @@
+import React from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -18,6 +19,7 @@ import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import PaymentFailed from "@/pages/PaymentFailed";
+import Demo from "@/pages/Demo";
 import { PlanProvider, usePlanContext } from "@/lib/plan-context";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { AuthModal } from "@/components/AuthModal";
@@ -34,14 +36,54 @@ const queryClient = new QueryClient();
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+// ── Error Boundary ────────────────────────────────────────────────────────────
+interface EBState { hasError: boolean }
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: Error, info: React.ErrorInfo) {
+    console.error("[ErrorBoundary] Caught:", err, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-[100dvh] bg-neutral-950 flex flex-col items-center justify-center gap-6 px-6 text-center">
+          <p className="text-4xl font-serif text-primary tracking-widest">VOYAGE</p>
+          <p className="text-white/60 text-sm max-w-xs">
+            Не удалось загрузить данные. Попробуйте обновить страницу.
+          </p>
+          <button
+            onClick={() => { this.setState({ hasError: false }); window.location.reload(); }}
+            className="px-6 py-3 bg-primary text-black text-sm font-medium uppercase tracking-widest rounded-xl hover:bg-primary/90 transition-colors"
+          >
+            Обновить
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ── Loading spinner ───────────────────────────────────────────────────────────
+function AuthLoadingScreen() {
+  return (
+    <div className="min-h-[100dvh] bg-neutral-950 flex flex-col items-center justify-center gap-4">
+      <p className="text-2xl font-serif text-primary tracking-widest">VOYAGE</p>
+      <div className="w-5 h-5 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+    </div>
+  );
+}
+
 function AppRoutes() {
   const { language } = usePlanContext();
   const { user, loading: authLoading } = useAuth();
 
-  // Show nothing while auth is resolving from localStorage
-  if (authLoading) return null;
+  if (authLoading) return <AuthLoadingScreen />;
 
-  // Mandatory auth gate — must log in before using the app
   if (!user) {
     return <AuthGate />;
   }
@@ -68,6 +110,7 @@ function Router() {
     <WouterRouter base={BASE}>
       <Switch>
         {/* Public pages — always accessible, never behind the language gate */}
+        <Route path="/demo" component={Demo} />
         <Route path="/terms" component={Terms} />
         <Route path="/privacy" component={Privacy} />
         <Route path="/contacts" component={Contacts} />
@@ -88,21 +131,23 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
-          <PlanProvider>
-            <LegalModalProvider>
-              <Router />
-              <AuthModal />
-              <MyTripsModal />
-              <SupportButton />
-            </LegalModalProvider>
-          </PlanProvider>
-        </AuthProvider>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <AuthProvider>
+            <PlanProvider>
+              <LegalModalProvider>
+                <Router />
+                <AuthModal />
+                <MyTripsModal />
+                <SupportButton />
+              </LegalModalProvider>
+            </PlanProvider>
+          </AuthProvider>
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

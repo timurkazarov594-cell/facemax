@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff, LogIn, UserPlus, Compass } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { useLegalModal } from '@/lib/legal-modal-context';
 
 type Tab = 'login' | 'register';
+type Lang = 'ru' | 'en';
 
 function isValidEmail(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
@@ -27,7 +27,7 @@ function LegalDocLink({ href, children }: { href: string; children: React.ReactN
   return (
     <span className="relative inline-block">
       <a href={href} target="_blank" rel="noopener noreferrer" onClick={handleClick}
-        className="hover:text-primary transition-colors">
+        className="text-primary/60 hover:text-primary underline-offset-2 hover:underline transition-colors">
         {children}
       </a>
       {missing && (
@@ -41,7 +41,7 @@ function LegalDocLink({ href, children }: { href: string; children: React.ReactN
 
 export function AuthGate() {
   const { login, register } = useAuth();
-  const { openLegal } = useLegalModal();
+  const [lang, setLang] = useState<Lang>('ru');
   const [tab, setTab] = useState<Tab>('login');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -49,6 +49,8 @@ export function AuthGate() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
+
+  const ru = lang === 'ru';
 
   const switchTab = (t: Tab) => {
     setTab(t);
@@ -62,27 +64,23 @@ export function AuthGate() {
     e.preventDefault();
 
     if (!name.trim()) {
-      setError('Введите email');
+      setError(ru ? 'Введите email' : 'Enter your email');
       return;
     }
-
     if (tab === 'register' && !isValidEmail(name)) {
-      setError('Введите корректный email');
+      setError(ru ? 'Введите корректный email' : 'Enter a valid email');
       return;
     }
-
     if (!password) {
-      setError('Введите пароль');
+      setError(ru ? 'Введите пароль' : 'Enter your password');
       return;
     }
-
     if (tab === 'register' && password.length < 6) {
-      setError('Пароль должен быть не короче 6 символов');
+      setError(ru ? 'Пароль должен быть не короче 6 символов' : 'Password must be at least 6 characters');
       return;
     }
-
     if (tab === 'register' && !agreed) {
-      setError('Подтвердите согласие с правилами сервиса');
+      setError(ru ? 'Подтвердите согласие с правилами сервиса' : 'Please accept the terms to continue');
       return;
     }
 
@@ -98,7 +96,7 @@ export function AuthGate() {
 
     if (result.error) {
       if (tab === 'login') {
-        setError('Неверный логин или пароль');
+        setError(ru ? 'Неверный логин или пароль' : 'Incorrect email or password');
       } else if (
         result.error.toLowerCase().includes('taken') ||
         result.error.toLowerCase().includes('exist') ||
@@ -106,13 +104,13 @@ export function AuthGate() {
         result.error.toLowerCase().includes('существует') ||
         result.error.toLowerCase().includes('зарегистрирован')
       ) {
-        setError('Пользователь уже существует');
+        setError(ru ? 'Пользователь уже существует' : 'This email is already registered');
       } else if (result.error.toLowerCase().includes('terms') || result.error.toLowerCase().includes('accept')) {
-        setError('Подтвердите согласие с правилами сервиса');
+        setError(ru ? 'Подтвердите согласие с правилами сервиса' : 'Please accept the terms to continue');
       } else if (result.error.toLowerCase().includes('сервер') || result.error.toLowerCase().includes('server')) {
-        setError('Ошибка сервера. Попробуйте позже.');
+        setError(ru ? 'Ошибка сервера. Попробуйте позже.' : 'Server error. Please try again later.');
       } else {
-        setError('Ошибка регистрации. Попробуйте снова.');
+        setError(ru ? 'Ошибка регистрации. Попробуйте снова.' : 'Registration failed. Please try again.');
       }
     } else if (tab === 'register') {
       try { localStorage.setItem('voyage_agreement_accepted', new Date().toISOString()); } catch (_) { /* ignore */ }
@@ -130,12 +128,32 @@ export function AuthGate() {
         className="relative w-full max-w-sm"
       >
         {/* Logo */}
-        <div className="flex flex-col items-center mb-10">
+        <div className="flex flex-col items-center mb-8">
           <div className="flex items-center gap-2.5 mb-4">
             <Compass className="w-7 h-7 text-primary" />
             <span className="font-serif text-2xl tracking-widest uppercase font-medium">VOYAGE</span>
           </div>
           <p className="text-xs text-muted-foreground/40 tracking-[0.22em] uppercase">The World Awaits</p>
+        </div>
+
+        {/* Language picker */}
+        <div className="flex justify-center mb-6">
+          <div className="flex rounded-lg border border-white/8 bg-neutral-900/60 p-0.5">
+            {(['ru', 'en'] as Lang[]).map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLang(l)}
+                className={`px-5 py-1.5 rounded-md text-xs font-medium tracking-widest uppercase transition-all duration-200 ${
+                  lang === l
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground/50 hover:text-muted-foreground'
+                }`}
+              >
+                {l === 'ru' ? 'Русский' : 'English'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Tab switcher */}
@@ -150,7 +168,9 @@ export function AuthGate() {
                   : 'text-muted-foreground/50 hover:text-muted-foreground'
               }`}
             >
-              {t === 'login' ? 'Войти' : 'Регистрация'}
+              {t === 'login'
+                ? (ru ? 'Войти' : 'Log in')
+                : (ru ? 'Регистрация' : 'Sign up')}
             </button>
           ))}
         </div>
@@ -182,13 +202,17 @@ export function AuthGate() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground/50 uppercase tracking-widest">Пароль</label>
+              <label className="text-xs text-muted-foreground/50 uppercase tracking-widest">
+                {ru ? 'Пароль' : 'Password'}
+              </label>
               <div className="relative">
                 <input
                   type={showPass ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={tab === 'register' ? 'Минимум 6 символов' : '••••••••'}
+                  placeholder={tab === 'register'
+                    ? (ru ? 'Минимум 6 символов' : 'Min 6 characters')
+                    : '••••••••'}
                   autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
                   className="w-full bg-neutral-900/70 border border-white/10 rounded-xl px-4 py-3 pr-11 text-sm text-white placeholder:text-muted-foreground/25 outline-none focus:border-primary/50 focus:bg-neutral-900 transition-colors"
                 />
@@ -223,21 +247,25 @@ export function AuthGate() {
                   )}
                 </button>
                 <p className="text-xs text-muted-foreground/50 leading-relaxed">
-                  Я ознакомился с{' '}
-                  <button type="button" onClick={() => openLegal('rules')}
-                    className="text-primary/60 hover:text-primary underline-offset-2 hover:underline transition-colors">
-                    правилами сайта
-                  </button>
-                  {', '}
-                  <button type="button" onClick={() => openLegal('terms')}
-                    className="text-primary/60 hover:text-primary underline-offset-2 hover:underline transition-colors">
-                    Пользовательским соглашением
-                  </button>
-                  {' и '}
-                  <button type="button" onClick={() => openLegal('privacy')}
-                    className="text-primary/60 hover:text-primary underline-offset-2 hover:underline transition-colors">
-                    Политикой конфиденциальности
-                  </button>
+                  {ru ? (
+                    <>
+                      Я ознакомился с правилами сайта,{' '}
+                      <LegalDocLink href="/legal/terms.pdf">Пользовательским соглашением</LegalDocLink>
+                      {', '}
+                      <LegalDocLink href="/legal/privacy.pdf">Политикой конфиденциальности</LegalDocLink>
+                      {' и '}
+                      <LegalDocLink href="/legal/oferta.pdf">Офертой</LegalDocLink>
+                    </>
+                  ) : (
+                    <>
+                      I have read and agree to the{' '}
+                      <LegalDocLink href="/legal/terms.pdf">Terms of Service</LegalDocLink>
+                      {', '}
+                      <LegalDocLink href="/legal/privacy.pdf">Privacy Policy</LegalDocLink>
+                      {' and '}
+                      <LegalDocLink href="/legal/oferta.pdf">Offer Agreement</LegalDocLink>
+                    </>
+                  )}
                 </p>
               </motion.div>
             )}
@@ -262,12 +290,12 @@ export function AuthGate() {
               ) : tab === 'login' ? (
                 <>
                   <LogIn className="w-4 h-4" />
-                  Войти
+                  {ru ? 'Войти' : 'Log in'}
                 </>
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
-                  Создать аккаунт
+                  {ru ? 'Создать аккаунт' : 'Create account'}
                 </>
               )}
             </button>
@@ -276,11 +304,17 @@ export function AuthGate() {
 
         {/* Bottom legal links — PDF documents */}
         <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground/25">
-          <LegalDocLink href="/legal/terms.pdf">Пользовательское соглашение</LegalDocLink>
+          <LegalDocLink href="/legal/terms.pdf">
+            {ru ? 'Пользовательское соглашение' : 'Terms of Service'}
+          </LegalDocLink>
           <span className="hidden sm:inline">·</span>
-          <LegalDocLink href="/legal/privacy.pdf">Политика конфиденциальности</LegalDocLink>
+          <LegalDocLink href="/legal/privacy.pdf">
+            {ru ? 'Политика конфиденциальности' : 'Privacy Policy'}
+          </LegalDocLink>
           <span className="hidden sm:inline">·</span>
-          <LegalDocLink href="/legal/oferta.pdf">Оферта</LegalDocLink>
+          <LegalDocLink href="/legal/oferta.pdf">
+            {ru ? 'Оферта' : 'Offer Agreement'}
+          </LegalDocLink>
         </div>
       </motion.div>
     </div>

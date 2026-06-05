@@ -97,6 +97,11 @@ function getUserTrips(userId) {
   return (u && u.trips) ? [...u.trips].reverse() : [];
 }
 
+function deleteUser(userId) {
+  const users = loadUsers().filter(u => u.id !== userId);
+  saveUsers(users);
+}
+
 function setPremium(userId, paymentId) {
   const users = loadUsers();
   const u = users.find(u => u.id === userId);
@@ -206,6 +211,31 @@ function createJob() {
 // ── Health ───────────────────────────────────────────────────────────────────
 app.get("/api/healthz", (_req, res) => res.json({ status: "ok" }));
 
+// ── Demo account seeding ─────────────────────────────────────────────────────
+async function seedDemoAccounts() {
+  const demos = [
+    { email: "demo@voyage.ai", password: "Demo12345!" },
+    { email: "test@voyage.ai", password: "Test12345!" },
+  ];
+  for (const { email, password } of demos) {
+    if (!findByName(email)) {
+      const passwordHash = await bcrypt.hash(password, 10);
+      const now = new Date().toISOString();
+      createUser({
+        id: crypto.randomUUID(),
+        name: email,
+        passwordHash,
+        createdAt: now,
+        isPremium: false,
+        trips: [],
+        sessionToken: null,
+        termsAcceptedAt: now,
+      });
+      console.log("[seed] Created demo account:", email);
+    }
+  }
+}
+
 // ── Auth routes ──────────────────────────────────────────────────────────────
 app.post("/api/auth/register", async (req, res) => {
   try {
@@ -274,6 +304,15 @@ app.post("/api/auth/login", async (req, res) => {
     console.error("[auth] Login error:", err);
     return res.status(500).json({ error: "Ошибка сервера. Попробуйте позже." });
   }
+});
+
+app.delete("/api/account", (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) return res.status(401).json({ error: "Login required" });
+  deleteUser(user.id);
+  req.session.destroy(() => {});
+  console.log("[auth] deleted account:", user.name);
+  res.json({ ok: true });
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -1074,6 +1113,13 @@ app.use((err, req, res, _next) => {
 });
 
 // ── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`[server] Voyage AI running on port ${PORT}`);
+seedDemoAccounts().then(() => {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[server] Voyage AI running on port ${PORT}`);
+  });
+}).catch(err => {
+  console.error("[seed] Failed to seed demo accounts:", err);
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[server] Voyage AI running on port ${PORT}`);
+  });
 });

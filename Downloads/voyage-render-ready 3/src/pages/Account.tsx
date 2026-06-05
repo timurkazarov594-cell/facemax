@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, User, MapPin, Hotel, Calendar, LogOut, ArrowRight, Bookmark, Star, Clock } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Hotel, Calendar, LogOut, ArrowRight, Bookmark, Star, Clock, Trash2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { usePlanContext } from '@/lib/plan-context';
 import { useLocation } from 'wouter';
 
 export default function Account() {
-  const { user, logout, savedTrips, openAuthModal } = useAuth();
+  const { user, logout, deleteAccount, savedTrips, openAuthModal } = useAuth();
   const { setResult } = usePlanContext();
   const [, setLocation] = useLocation();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -28,6 +31,18 @@ export default function Account() {
   const handleLogout = async () => {
     setLoggingOut(true);
     await logout();
+    setLocation('/');
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    const { error } = await deleteAccount();
+    if (error) {
+      setDeleteError(error);
+      setDeleting(false);
+      return;
+    }
     setLocation('/');
   };
 
@@ -218,7 +233,7 @@ export default function Account() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.16 }}
-          className="pt-2"
+          className="pt-2 space-y-3"
         >
           <button
             onClick={handleLogout}
@@ -228,9 +243,75 @@ export default function Account() {
             <LogOut className="w-4 h-4" />
             {loggingOut ? 'Выход...' : 'Выйти'}
           </button>
+
+          {/* Delete account button */}
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-white/5 text-white/20 hover:text-red-400/60 hover:border-red-900/20 transition-colors text-xs"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Удалить аккаунт
+          </button>
         </motion.div>
 
       </div>
+
+      {/* Delete account confirmation modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-5"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteModal(false); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-sm bg-neutral-900 border border-white/10 rounded-2xl p-6 relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-500/30 to-transparent" />
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-xl bg-red-950/50 border border-red-900/40">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <h2 className="text-lg font-serif text-white">Удалить аккаунт?</h2>
+              </div>
+
+              <p className="text-sm text-white/50 mb-6 leading-relaxed">
+                Это действие нельзя отменить. Ваш аккаунт и сохранённые поездки будут удалены.
+              </p>
+
+              {deleteError && (
+                <p className="text-xs text-red-400 mb-4 bg-red-950/30 border border-red-900/30 rounded-lg px-3 py-2">
+                  {deleteError}
+                </p>
+              )}
+
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleting}
+                  className="w-full py-3 rounded-xl bg-red-950/60 border border-red-800/50 text-red-300 hover:bg-red-900/50 hover:text-red-200 transition-colors text-sm font-medium disabled:opacity-50"
+                >
+                  {deleting ? 'Удаление...' : 'Да, продолжить'}
+                </button>
+                <button
+                  onClick={() => { setShowDeleteModal(false); setDeleteError(null); }}
+                  disabled={deleting}
+                  className="w-full py-3 rounded-xl border border-white/8 text-white/50 hover:text-white hover:bg-white/5 transition-colors text-sm disabled:opacity-50"
+                >
+                  Нет, закрыть
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

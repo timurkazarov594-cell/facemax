@@ -10,6 +10,35 @@ import { usePlanContext } from '@/lib/plan-context';
 import { useAuth } from '@/lib/auth-context';
 import { isDevUnlocked, disableDevMode } from '@/lib/dev-bypass';
 
+function LegalDocLink({ href, children }: { href: string; children: React.ReactNode }) {
+  const [missing, setMissing] = React.useState(false);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(href, { method: 'HEAD' });
+      if (res.ok) { window.open(href, '_blank', 'noopener noreferrer'); return; }
+    } catch { /* fall through */ }
+    setMissing(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setMissing(false), 3500);
+  };
+  return (
+    <span className="relative inline-block">
+      <a href={href} target="_blank" rel="noopener noreferrer" onClick={handleClick}
+        className="text-primary/70 hover:text-primary underline-offset-2 hover:underline transition-colors">
+        {children}
+      </a>
+      {missing && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 px-3 py-1.5 rounded-lg bg-neutral-800 border border-white/10 text-xs text-white/70 whitespace-nowrap pointer-events-none shadow-lg">
+          Документ временно недоступен
+        </span>
+      )}
+    </span>
+  );
+}
+
 const FEATURES_RU = [
   { icon: Sparkles,   text: 'Персональные AI-маршруты' },
   { icon: Hotel,      text: 'Подбор отелей под ваши предпочтения' },
@@ -386,50 +415,22 @@ export default function Paywall() {
           <p className="text-xs text-muted-foreground/55 leading-relaxed">
             {lang === 'ru'
               ? <>
-                  Я{' '}
-                  <button
-                    type="button"
-                    onClick={() => openLegal('terms')}
-                    className="text-primary/70 hover:text-primary underline-offset-2 hover:underline transition-colors"
-                  >
-                    подтверждаю оплату
-                  </button>
-                  {' '}499₽ и ознакомился со{' '}
-                  <button
-                    type="button"
-                    onClick={() => openLegal('rules')}
-                    className="text-primary/70 hover:text-primary underline-offset-2 hover:underline transition-colors"
-                  >
-                    всеми правилами сервиса
-                  </button>
-                  {'. Маршрут создан AI и может содержать неточности. Я проверю данные перед бронированием. Я принимаю '}
-                  <button type="button" onClick={() => openLegal('terms')} className="text-primary/60 hover:text-primary underline-offset-2 hover:underline transition-colors">Пользовательское соглашение</button>
+                  Я подтверждаю оплату 499₽ и ознакомился со всеми правилами сервиса,{' '}
+                  <LegalDocLink href="/legal/terms.pdf">Пользовательским соглашением</LegalDocLink>
+                  {', '}
+                  <LegalDocLink href="/legal/privacy.pdf">Политикой конфиденциальности</LegalDocLink>
                   {' и '}
-                  <button type="button" onClick={() => openLegal('privacy')} className="text-primary/60 hover:text-primary underline-offset-2 hover:underline transition-colors">Политику конфиденциальности</button>
-                  .
+                  <LegalDocLink href="/legal/oferta.pdf">Офертой</LegalDocLink>
+                  {'. Маршрут создан AI и может содержать неточности. Я проверю данные перед бронированием.'}
                 </>
               : <>
-                  I{' '}
-                  <button
-                    type="button"
-                    onClick={() => openLegal('terms')}
-                    className="text-primary/70 hover:text-primary underline-offset-2 hover:underline transition-colors"
-                  >
-                    confirm payment
-                  </button>
-                  {' '}of 499₽ and have read{' '}
-                  <button
-                    type="button"
-                    onClick={() => openLegal('rules')}
-                    className="text-primary/70 hover:text-primary underline-offset-2 hover:underline transition-colors"
-                  >
-                    all service rules
-                  </button>
-                  {'. The itinerary is AI-generated and may contain inaccuracies. I accept the '}
-                  <button type="button" onClick={() => openLegal('terms')} className="text-primary/60 hover:text-primary underline-offset-2 hover:underline transition-colors">Terms of Service</button>
+                  I confirm payment of 499₽ and have read all service rules,{' '}
+                  <LegalDocLink href="/legal/terms.pdf">Terms of Service</LegalDocLink>
+                  {', '}
+                  <LegalDocLink href="/legal/privacy.pdf">Privacy Policy</LegalDocLink>
                   {' and '}
-                  <button type="button" onClick={() => openLegal('privacy')} className="text-primary/60 hover:text-primary underline-offset-2 hover:underline transition-colors">Privacy Policy</button>
-                  .
+                  <LegalDocLink href="/legal/oferta.pdf">Offer Agreement</LegalDocLink>
+                  {'. The itinerary is AI-generated and may contain inaccuracies. I will verify details before booking.'}
                 </>
             }
           </p>
