@@ -1,0 +1,1417 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: stylist
+    description: AI Fashion Stylist operations
+  - name: voyage
+    description: AI Travel Concierge operations
+  - name: speaktutor
+    description: SpeakTutor AI — English speaking tutor
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /stylist/analyze:
+    post:
+      operationId: analyzeStyle
+      tags: [stylist]
+      summary: Analyze style and generate outfit
+      description: Accepts a photo (base64) and quiz answers, returns AI-generated outfit recommendations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeStyleBody"
+      responses:
+        "200":
+          description: Outfit result generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutfitResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stylist/outfits:
+    get:
+      operationId: listOutfits
+      tags: [stylist]
+      summary: List saved outfits
+      description: Returns all saved outfit records
+      responses:
+        "200":
+          description: List of saved outfits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SavedOutfit"
+    post:
+      operationId: saveOutfit
+      tags: [stylist]
+      summary: Save an outfit
+      description: Saves an outfit result to the database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveOutfitBody"
+      responses:
+        "201":
+          description: Outfit saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedOutfit"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /voyage/plan:
+    post:
+      operationId: planVoyage
+      tags: [voyage]
+      summary: Generate AI travel plan
+      description: Accepts user preferences and returns a fully AI-generated travel plan including hotel, restaurants, activities, day plan, and budget breakdown
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoyagePlanRequest"
+      responses:
+        "200":
+          description: AI travel plan generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoyagePlanResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: AI generation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /speaktutor/activate-sessions:
+    post:
+      operationId: activateSpeakTutorSessions
+      tags: [speaktutor]
+      summary: Purchase session package (499₽ = 5 sessions)
+      responses:
+        "200":
+          description: Updated profile with session balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorProfile"
+
+  /speaktutor/profile:
+    get:
+      operationId: getSpeakTutorProfile
+      tags: [speaktutor]
+      summary: Get user profile and stats
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorProfile"
+    patch:
+      operationId: updateSpeakTutorProfile
+      tags: [speaktutor]
+      summary: Update user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TutorProfileUpdate"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorProfile"
+
+  /speaktutor/dashboard:
+    get:
+      operationId: getSpeakTutorDashboard
+      tags: [speaktutor]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorDashboard"
+
+  /speaktutor/scenarios:
+    get:
+      operationId: listSpeakTutorScenarios
+      tags: [speaktutor]
+      summary: List available practice scenarios
+      responses:
+        "200":
+          description: List of scenarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TutorScenario"
+
+  /speaktutor/sessions:
+    get:
+      operationId: listSpeakTutorSessions
+      tags: [speaktutor]
+      summary: List user's practice sessions
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TutorSession"
+    post:
+      operationId: createSpeakTutorSession
+      tags: [speaktutor]
+      summary: Start a new practice session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TutorSessionInput"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorSession"
+
+  /speaktutor/sessions/{sessionId}:
+    get:
+      operationId: getSpeakTutorSession
+      tags: [speaktutor]
+      summary: Get session with messages
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Session with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorSessionDetail"
+    patch:
+      operationId: endSpeakTutorSession
+      tags: [speaktutor]
+      summary: End a session
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TutorSessionEnd"
+      responses:
+        "200":
+          description: Session ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorSession"
+
+  /speaktutor/sessions/{sessionId}/extend:
+    post:
+      operationId: extendSpeakTutorSession
+      tags: [speaktutor]
+      summary: Extend session by 7 messages (100₽)
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Extended session message info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: integer
+                  purchasedExtraUserMessages:
+                    type: integer
+                  totalUserMessages:
+                    type: integer
+                  userMessagesRemaining:
+                    type: integer
+                required: [sessionId, purchasedExtraUserMessages, totalUserMessages, userMessagesRemaining]
+        "400":
+          description: Session already at max messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /speaktutor/sessions/{sessionId}/messages:
+    post:
+      operationId: sendSpeakTutorMessage
+      tags: [speaktutor]
+      summary: Send a message and get AI tutor response with correction
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TutorMessageInput"
+      responses:
+        "200":
+          description: AI tutor response with correction analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorMessageResponse"
+        "500":
+          description: AI error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /speaktutor/transcribe:
+    post:
+      operationId: transcribeSpeakTutor
+      tags: [speaktutor]
+      summary: Transcribe audio to text using OpenAI Whisper
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscribeInput"
+      responses:
+        "200":
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscribeResult"
+        "500":
+          description: Transcription error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /speaktutor/tts:
+    post:
+      operationId: textToSpeechSpeakTutor
+      tags: [speaktutor]
+      summary: Convert text to speech audio (base64)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TtsInput"
+      responses:
+        "200":
+          description: Audio as base64
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TtsResult"
+
+  /speaktutor/achievements:
+    get:
+      operationId: listSpeakTutorAchievements
+      tags: [speaktutor]
+      summary: Get user achievements and badges
+      responses:
+        "200":
+          description: Achievements list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TutorAchievement"
+
+  /speaktutor/vocabulary:
+    get:
+      operationId: listSpeakTutorVocabulary
+      tags: [speaktutor]
+      summary: Get personal vocabulary list
+      responses:
+        "200":
+          description: Vocabulary words
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TutorWord"
+    post:
+      operationId: addSpeakTutorWord
+      tags: [speaktutor]
+      summary: Add word to vocabulary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TutorWordInput"
+      responses:
+        "201":
+          description: Word added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorWord"
+
+  /speaktutor/vocabulary/{wordId}:
+    delete:
+      operationId: deleteSpeakTutorWord
+      tags: [speaktutor]
+      summary: Remove word from vocabulary
+      parameters:
+        - name: wordId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /speaktutor/analytics:
+    get:
+      operationId: getSpeakTutorAnalytics
+      tags: [speaktutor]
+      summary: Get progress analytics and weekly/monthly stats
+      responses:
+        "200":
+          description: Analytics data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorAnalytics"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    QuizAnswers:
+      type: object
+      properties:
+        gender:
+          type: ["string", "null"]
+          description: User gender (male, female, nonbinary)
+        style:
+          type: string
+          description: Primary aesthetic style (e.g. minimalist, streetwear, luxury)
+        styleCustom:
+          type: ["string", "null"]
+          description: Custom style input if provided
+        colors:
+          type: array
+          items:
+            type: string
+          description: Preferred colors
+        season:
+          type: string
+          description: Current season (spring, summer, fall, winter)
+        purpose:
+          type: string
+          description: Outfit purpose (casual, work, formal, date, party)
+        budget:
+          type: string
+          description: Budget range (budget, mid-range, luxury, ultra-luxury)
+        brands:
+          type: array
+          items:
+            type: string
+          description: Preferred brands
+        chatMessage:
+          type: ["string", "null"]
+          description: Optional chat message to refine the outfit
+        quickAction:
+          type: ["string", "null"]
+          description: Quick action modifier (e.g. billionaire, luxury, celebrity)
+      required:
+        - style
+        - colors
+        - season
+        - purpose
+        - budget
+        - brands
+
+    OutfitItem:
+      type: object
+      properties:
+        category:
+          type: string
+          description: Item category (tops, jackets, pants, shoes, accessories, watches, glasses, bags, jewelry)
+        name:
+          type: string
+          description: Item name
+        brand:
+          type: string
+          description: Brand name
+        estimatedPrice:
+          type: string
+          description: Estimated price range (e.g. "$250-$400")
+        aestheticTag:
+          type: string
+          description: Aesthetic tag (e.g. "Old Money", "Streetwear Elite")
+        colorPalette:
+          type: array
+          items:
+            type: string
+          description: Array of hex color codes for the item
+        description:
+          type: string
+          description: Short description of why this item was chosen
+      required:
+        - category
+        - name
+        - brand
+        - estimatedPrice
+        - aestheticTag
+        - colorPalette
+        - description
+
+    OutfitResult:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutfitItem"
+        overallAesthetic:
+          type: string
+          description: Overall aesthetic theme for the outfit
+        styleNarrative:
+          type: string
+          description: A narrative describing the complete look
+        chatResponse:
+          type: ["string", "null"]
+          description: AI chat response if a chat message was sent
+      required:
+        - items
+        - overallAesthetic
+        - styleNarrative
+
+    SaveOutfitBody:
+      type: object
+      properties:
+        quizAnswers:
+          $ref: "#/components/schemas/QuizAnswers"
+        outfitResult:
+          $ref: "#/components/schemas/OutfitResult"
+        label:
+          type: ["string", "null"]
+          description: Optional label for the saved outfit
+      required:
+        - quizAnswers
+        - outfitResult
+
+    SavedOutfit:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier
+        createdAt:
+          type: string
+          format: date-time
+          description: When the outfit was saved
+        quizAnswers:
+          $ref: "#/components/schemas/QuizAnswers"
+        outfitResult:
+          $ref: "#/components/schemas/OutfitResult"
+        label:
+          type: ["string", "null"]
+          description: Optional label for the saved outfit
+      required:
+        - id
+        - createdAt
+        - quizAnswers
+        - outfitResult
+
+    AnalyzeStyleBody:
+      type: object
+      properties:
+        photo:
+          type: ["string", "null"]
+          description: Base64-encoded photo for style analysis
+        quizAnswers:
+          $ref: "#/components/schemas/QuizAnswers"
+      required:
+        - quizAnswers
+
+    VoyagePlanRequest:
+      type: object
+      properties:
+        destination:
+          type: string
+          description: User's desired destination (city or country)
+        travelLevel:
+          type: string
+          description: Travel tier (budget, cheap_perfect, comfort, business, premium, luxury, ultra_luxury)
+        tripTypes:
+          type: array
+          items:
+            type: string
+          description: Types of trip (romantic, family, party, beach, adventure, shopping, food_tour, honeymoon, spa, sport, nature, city, tiktok)
+        hotelPrefs:
+          type: array
+          items:
+            type: string
+          description: Hotel preferences (pool, spa, sea_view, near_beach, adults_only, etc.)
+        restaurantPrefs:
+          type: array
+          items:
+            type: string
+          description: Restaurant preferences (romantic, michelin, rooftop, street_food, etc.)
+        duration:
+          type: string
+          description: Trip duration (2-3 days, 4-5 days, 7 days, 10 days, 14 days, or custom)
+        budget:
+          type: string
+          description: Budget range (under_500, 500_1000, 1000_2500, 2500_5000, 5000_plus, or custom)
+        language:
+          type: string
+          description: Response language (en or ru)
+        guests:
+          type: string
+          description: Number of guests (1, 2, 3, 4, 5+, or custom number)
+        rooms:
+          type: string
+          description: Number of rooms explicitly selected by the user (1, 2, 3, or custom)
+        roomType:
+          type: string
+          description: Preferred room type (cheapest, standard, comfort, business, luxury, presidential, villa)
+        city:
+          type: string
+          description: Specific city within the destination (e.g. Dubai, Paris, Courchevel, Bali)
+      required:
+        - destination
+        - travelLevel
+        - tripTypes
+        - hotelPrefs
+        - restaurantPrefs
+        - duration
+        - budget
+        - language
+
+    VoyageHotel:
+      type: object
+      properties:
+        name:
+          type: string
+        rating:
+          type: number
+        pricePerNight:
+          type: string
+        description:
+          type: string
+        whyItFits:
+          type: string
+        amenities:
+          type: array
+          items:
+            type: string
+        imagePrompt:
+          type: string
+          description: Description for the hotel image
+        location:
+          type: string
+          description: Neighborhood or area of the hotel
+        hotelUrl:
+          type: string
+          description: Google search URL for booking this hotel
+        imageUrl:
+          type: string
+          description: Destination-accurate atmospheric image URL (always correct for the location)
+        photosUrl:
+          type: string
+          description: Google Images search URL for hotel-specific photos
+        roomType:
+          type: string
+          description: Actual room type selected (e.g. Business Suite, Deluxe Room, Presidential Suite, Private Villa)
+        roomsNeeded:
+          type: number
+          description: Number of rooms needed for the group
+        nightsCount:
+          type: number
+          description: Total number of nights
+        hotelTotal:
+          type: string
+          description: Total hotel cost (pricePerNight × nights × rooms)
+      required:
+        - name
+        - rating
+        - pricePerNight
+        - description
+        - whyItFits
+        - amenities
+        - imagePrompt
+        - location
+        - hotelUrl
+        - imageUrl
+        - photosUrl
+
+    VoyageRestaurant:
+      type: object
+      properties:
+        name:
+          type: string
+        style:
+          type: string
+        averageCheck:
+          type: string
+        whyItFits:
+          type: string
+        location:
+          type: string
+        imagePrompt:
+          type: string
+      required:
+        - name
+        - style
+        - averageCheck
+        - whyItFits
+        - location
+        - imagePrompt
+
+    VoyageActivity:
+      type: object
+      properties:
+        name:
+          type: string
+        duration:
+          type: string
+        price:
+          type: string
+        included:
+          type: boolean
+          description: True if this activity is included in the hotel stay (e.g. all-inclusive)
+        whyItFits:
+          type: string
+        imagePrompt:
+          type: string
+      required:
+        - name
+        - duration
+        - price
+        - included
+        - whyItFits
+        - imagePrompt
+
+    VoyageDayEntry:
+      type: object
+      properties:
+        day:
+          type: integer
+        title:
+          type: string
+        morning:
+          type: string
+        afternoon:
+          type: string
+        evening:
+          type: string
+      required:
+        - day
+        - title
+        - morning
+        - afternoon
+        - evening
+
+    VoyageBudgetBreakdown:
+      type: object
+      properties:
+        hotel:
+          type: string
+        food:
+          type: string
+        activities:
+          type: string
+        transport:
+          type: string
+        airportTransfer:
+          type: string
+          description: Airport transfer cost both ways
+        cityTax:
+          type: string
+          description: City or resort tax estimate
+        insurance:
+          type: string
+          description: Travel insurance estimate
+        visa:
+          type: string
+          description: Visa cost or "Not required"
+        shopping:
+          type: string
+          description: Shopping and personal spending estimate
+        total:
+          type: string
+      required:
+        - hotel
+        - food
+        - activities
+        - transport
+        - total
+
+    VoyagePlanResult:
+      type: object
+      properties:
+        destination:
+          type: string
+        hotel:
+          $ref: "#/components/schemas/VoyageHotel"
+        restaurants:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoyageRestaurant"
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoyageActivity"
+        dayPlan:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoyageDayEntry"
+        budgetBreakdown:
+          $ref: "#/components/schemas/VoyageBudgetBreakdown"
+        explanation:
+          type: string
+          description: AI explanation of choices
+        costNote:
+          type: string
+          description: Human-readable cost calculation note (e.g. "Calculated for 2 guests, 7 nights, Business Suite")
+      required:
+        - destination
+        - hotel
+        - restaurants
+        - activities
+        - dayPlan
+        - budgetBreakdown
+        - explanation
+
+    # ── SpeakTutor AI schemas ────────────────────────────────────────────────
+
+    TutorProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: ["string", "null"]
+        email:
+          type: string
+        level:
+          type: string
+          description: "beginner | intermediate | advanced"
+        xp:
+          type: integer
+        streak:
+          type: integer
+          description: Current daily streak in days
+        totalSpeakingMinutes:
+          type: integer
+        lessonsCompleted:
+          type: integer
+        grammarScore:
+          type: number
+          description: 0-100
+        vocabularyScore:
+          type: number
+          description: 0-100
+        pronunciationScore:
+          type: number
+          description: 0-100
+        createdAt:
+          type: string
+          format: date-time
+        paymentStatus:
+          type: string
+          description: "demo | paid"
+        isPaid:
+          type: boolean
+        demoRepliesUsed:
+          type: integer
+          description: Total voice replies used in demo mode
+        demoCompleted:
+          type: boolean
+          description: True when user exhausted demo replies
+        paidSessionsRemaining:
+          type: integer
+          description: Paid sessions left in current balance
+        demoRepliesRemaining:
+          type: integer
+          description: Demo replies remaining (0-2)
+      required:
+        - id
+        - email
+        - level
+        - xp
+        - streak
+        - totalSpeakingMinutes
+        - lessonsCompleted
+        - grammarScore
+        - vocabularyScore
+        - pronunciationScore
+        - createdAt
+        - paymentStatus
+        - isPaid
+        - demoRepliesUsed
+        - demoCompleted
+        - paidSessionsRemaining
+        - demoRepliesRemaining
+
+    TutorProfileUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        level:
+          type: string
+
+    TutorDashboard:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/TutorProfile"
+        weeklyXp:
+          type: array
+          items:
+            type: object
+            properties:
+              day:
+                type: string
+              xp:
+                type: integer
+            required: [day, xp]
+        recentSessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/TutorSession"
+        topMistakes:
+          type: array
+          items:
+            type: object
+            properties:
+              mistake:
+                type: string
+              count:
+                type: integer
+              category:
+                type: string
+            required: [mistake, count, category]
+        streakCalendar:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              practiced:
+                type: boolean
+            required: [date, practiced]
+      required:
+        - profile
+        - weeklyXp
+        - recentSessions
+        - topMistakes
+        - streakCalendar
+
+    TutorScenario:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          description: Title in Russian
+        titleEn:
+          type: string
+          description: Title in English
+        description:
+          type: string
+          description: Description in Russian
+        emoji:
+          type: string
+        category:
+          type: string
+          description: "everyday | travel | business | interview | free"
+        difficulty:
+          type: string
+          description: "beginner | intermediate | advanced | all"
+        durationMinutes:
+          type: integer
+        isPro:
+          type: boolean
+      required:
+        - id
+        - title
+        - titleEn
+        - description
+        - emoji
+        - category
+        - difficulty
+        - durationMinutes
+        - isPro
+
+    TutorSession:
+      type: object
+      properties:
+        id:
+          type: integer
+        scenarioId:
+          type: string
+        scenarioTitle:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+        durationSeconds:
+          type: ["integer", "null"]
+        overallScore:
+          type: ["number", "null"]
+          description: 0-10 average score for the session
+        xpEarned:
+          type: ["integer", "null"]
+        messageCount:
+          type: integer
+        isDemoSession:
+          type: boolean
+        userMessagesUsed:
+          type: integer
+        aiMessagesUsed:
+          type: integer
+        includedUserMessages:
+          type: integer
+        includedAiMessages:
+          type: integer
+        purchasedExtraUserMessages:
+          type: integer
+        purchasedExtraAiMessages:
+          type: integer
+        maxUserMessages:
+          type: integer
+        maxAiMessages:
+          type: integer
+      required:
+        - id
+        - scenarioId
+        - scenarioTitle
+        - startedAt
+        - messageCount
+
+    TutorSessionInput:
+      type: object
+      properties:
+        scenarioId:
+          type: string
+        level:
+          type: string
+          description: "beginner | intermediate | advanced"
+      required:
+        - scenarioId
+
+    TutorSessionEnd:
+      type: object
+      properties:
+        durationSeconds:
+          type: integer
+
+    TutorMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+          description: "user | assistant"
+        text:
+          type: string
+        audioUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        correction:
+          $ref: "#/components/schemas/TutorCorrection"
+      required:
+        - id
+        - role
+        - text
+        - createdAt
+
+    TutorCorrection:
+      type: object
+      properties:
+        originalText:
+          type: string
+        correctedText:
+          type: string
+        grammarMistakes:
+          type: array
+          items:
+            type: string
+        vocabularyMistakes:
+          type: array
+          items:
+            type: string
+        pronunciationWarnings:
+          type: array
+          items:
+            type: string
+        nativeSpeakerVersion:
+          type: string
+        explanationRu:
+          type: string
+          description: Explanation in Russian
+        score:
+          type: number
+          description: 1-10
+      required:
+        - originalText
+        - correctedText
+        - grammarMistakes
+        - vocabularyMistakes
+        - pronunciationWarnings
+        - nativeSpeakerVersion
+        - explanationRu
+        - score
+
+    TutorSessionDetail:
+      type: object
+      properties:
+        session:
+          $ref: "#/components/schemas/TutorSession"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/TutorMessage"
+      required:
+        - session
+        - messages
+
+    TutorMessageInput:
+      type: object
+      properties:
+        text:
+          type: string
+          description: User's spoken text (after transcription)
+        audioBase64:
+          type: ["string", "null"]
+          description: Optional base64 audio for transcription
+      required:
+        - text
+
+    TutorMessageInfo:
+      type: object
+      properties:
+        userMessagesUsed:
+          type: integer
+        userMessagesTotal:
+          type: integer
+        userMessagesRemaining:
+          type: integer
+      required:
+        - userMessagesUsed
+        - userMessagesTotal
+        - userMessagesRemaining
+
+    TutorMessageResponse:
+      type: object
+      properties:
+        userMessage:
+          $ref: "#/components/schemas/TutorMessage"
+        assistantMessage:
+          $ref: "#/components/schemas/TutorMessage"
+        correction:
+          $ref: "#/components/schemas/TutorCorrection"
+        xpEarned:
+          type: integer
+        messageInfo:
+          $ref: "#/components/schemas/TutorMessageInfo"
+          nullable: true
+      required:
+        - userMessage
+        - assistantMessage
+        - correction
+        - xpEarned
+
+    TranscribeInput:
+      type: object
+      properties:
+        audioBase64:
+          type: string
+          description: Base64-encoded audio (webm or wav)
+        mimeType:
+          type: string
+          description: "audio/webm or audio/wav"
+      required:
+        - audioBase64
+        - mimeType
+
+    TranscribeResult:
+      type: object
+      properties:
+        text:
+          type: string
+        confidence:
+          type: ["number", "null"]
+          description: 0-1 confidence score
+        words:
+          type: array
+          description: Word-level confidence if available
+          items:
+            type: object
+            properties:
+              word:
+                type: string
+              confidence:
+                type: number
+            required: [word, confidence]
+      required:
+        - text
+
+    TtsInput:
+      type: object
+      properties:
+        text:
+          type: string
+        voice:
+          type: string
+          description: "alloy | echo | fable | onyx | nova | shimmer"
+      required:
+        - text
+
+    TtsResult:
+      type: object
+      properties:
+        audioBase64:
+          type: string
+          description: Base64 MP3 audio
+      required:
+        - audioBase64
+
+    TutorAchievement:
+      type: object
+      properties:
+        id:
+          type: integer
+        badgeName:
+          type: string
+        titleRu:
+          type: string
+        descriptionRu:
+          type: string
+        emoji:
+          type: string
+        unlockedAt:
+          type: ["string", "null"]
+          format: date-time
+        isUnlocked:
+          type: boolean
+        xpReward:
+          type: integer
+      required:
+        - id
+        - badgeName
+        - titleRu
+        - descriptionRu
+        - emoji
+        - isUnlocked
+        - xpReward
+
+    TutorWord:
+      type: object
+      properties:
+        id:
+          type: integer
+        word:
+          type: string
+        translation:
+          type: string
+          description: Russian translation
+        exampleSentence:
+          type: ["string", "null"]
+        isMastered:
+          type: boolean
+        timesSeenWrong:
+          type: integer
+        addedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - word
+        - translation
+        - isMastered
+        - timesSeenWrong
+        - addedAt
+
+    TutorWordInput:
+      type: object
+      properties:
+        word:
+          type: string
+        translation:
+          type: string
+        exampleSentence:
+          type: string
+      required:
+        - word
+        - translation
+
+    TutorAnalytics:
+      type: object
+      properties:
+        weeklyProgress:
+          type: array
+          items:
+            type: object
+            properties:
+              week:
+                type: string
+              grammarScore:
+                type: number
+              vocabularyScore:
+                type: number
+              pronunciationScore:
+                type: number
+              speakingMinutes:
+                type: integer
+              sessionsCount:
+                type: integer
+            required: [week, grammarScore, vocabularyScore, pronunciationScore, speakingMinutes, sessionsCount]
+        errorFrequency:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              count:
+                type: integer
+              percentage:
+                type: number
+            required: [category, count, percentage]
+        vocabularyGrowth:
+          type: array
+          items:
+            type: object
+            properties:
+              month:
+                type: string
+              wordsLearned:
+                type: integer
+            required: [month, wordsLearned]
+        totalStats:
+          type: object
+          properties:
+            totalSessions:
+              type: integer
+            totalMinutes:
+              type: integer
+            totalWords:
+              type: integer
+            averageScore:
+              type: number
+          required: [totalSessions, totalMinutes, totalWords, averageScore]
+      required:
+        - weeklyProgress
+        - errorFrequency
+        - vocabularyGrowth
+        - totalStats
